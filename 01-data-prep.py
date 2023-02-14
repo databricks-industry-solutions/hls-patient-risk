@@ -133,8 +133,8 @@ drug_hist_att_id = 2
 
 # DBTITLE 1,Create condition cohort
 # MAGIC %sql
-# MAGIC CREATE
-# MAGIC OR REPLACE TEMP VIEW earliest_condition_onset AS (
+# MAGIC DROP TABLE IF EXISTS earliest_condition_onset;
+# MAGIC CREATE TABLE earliest_condition_onset AS (
 # MAGIC   SELECT
 # MAGIC     person_id,
 # MAGIC     min(condition_start_date) as condition_start_date
@@ -160,6 +160,8 @@ drug_hist_att_id = 2
 
 # DBTITLE 1,create target Cohort
 # MAGIC %py
+# MAGIC #Minimum of 3 years prior observation
+# MAGIC #Minimum of 1 year available after observation
 # MAGIC target_cohort_query =  f"""
 # MAGIC SELECT
 # MAGIC     {target_cohort_id} as cohort_definition_id,
@@ -168,11 +170,12 @@ drug_hist_att_id = 2
 # MAGIC     observation_period.observation_period_end_date AS cohort_end_date
 # MAGIC   from
 # MAGIC     earliest_condition_onset
-# MAGIC     INNER JOIN observation_period ON earliest_condition_onset.person_id = observation_period.person_id
+# MAGIC     INNER JOIN (SELECT person_id, min(visit_start_date) as observation_period_start_date, max(visit_start_date) as observation_period_end_date  FROM visit_occurrence GROUP BY person_id) observation_period 
+# MAGIC       ON earliest_condition_onset.person_id = observation_period.person_id
 # MAGIC     AND earliest_condition_onset.condition_start_date > date_add(
-# MAGIC       observation_period.observation_period_start_date, {min_observation_period}
+# MAGIC       observation_period.observation_period_start_date, ( -1 * {min_observation_period} )
 # MAGIC     )
-# MAGIC     AND earliest_condition_onset.condition_start_date < observation_period.observation_period_end_date
+# MAGIC     AND date_add(earliest_condition_onset.condition_start_date, {max_time_at_risk} ) < observation_period.observation_period_end_date
 # MAGIC """
 # MAGIC 
 # MAGIC cnt = sql(f'select count(*) as cnt from omop_patient_risk.cohort').collect()[0]['cnt']
@@ -495,9 +498,10 @@ description="drug features"
 # MAGIC   fs.drop_table(FEATURE_TABLE_NAME)
 # MAGIC except ValueError:
 # MAGIC   pass
-# MAGIC   
+# MAGIC 
+# MAGIC #TODO Add date parameter to "offline" feature store for model training 
 # MAGIC drug_features_df = sql(f"""
-# MAGIC     select subject_id, VALUE_AS_CONCEPT_ID as drug_concept_id, VALUE_AS_NUMBER as drug_quantity 
+# MAGIC     select subject_id, VALUE_AS_CONCEPT_ID as drug_concept_id, VALUE_AS_NUMBER as drug_quantity  
 # MAGIC     from omop_patient_risk.cohort_attribute
 # MAGIC     where 
 # MAGIC     ATTRIBUTE_DEFINITION_ID = {drug_hist_att_id} and COHORT_DEFINITION_ID={target_cohort_id}
