@@ -301,18 +301,16 @@ limit 10""").display()
 # COMMAND ----------
 
 # MAGIC %md
-# MAGIC ## Patient Cohort Attributes
-# MAGIC TODO: Add description and link to OMOP docs
-
-# COMMAND ----------
-
-# MAGIC %md
-# MAGIC Since we will be comparing dates often, it is better to simplify downstream queries by defining a sql function that retruns whether a given date is within a range
+# MAGIC ## Feature Engineering
+# MAGIC At this point, we've created our Target & Outcome cohorts  
+# MAGIC 
+# MAGIC Now we want to develop features that are relevant to CHF + ER admission. This is cenetered around Patient attributes, relevant medical history (procedures, drugs, diagnosis, comorbidities)
 
 # COMMAND ----------
 
 # DBTITLE 1,function to validate time overlap
 # MAGIC %sql
+# MAGIC --TODO Here ADZ
 # MAGIC CREATE
 # MAGIC OR REPLACE TEMPORARY FUNCTION is_valid_time_overlap (
 # MAGIC   cohort1_start DATE,
@@ -330,7 +328,7 @@ limit 10""").display()
 # COMMAND ----------
 
 # MAGIC %md
-# MAGIC ### Outcome Attribute
+# MAGIC ### Relevant 
 
 # COMMAND ----------
 
