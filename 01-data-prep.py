@@ -167,7 +167,7 @@ drug_hist_att_id = 2
 # MAGIC     {target_cohort_id} as cohort_definition_id,
 # MAGIC     earliest_condition_onset.person_id AS subject_id,
 # MAGIC     earliest_condition_onset.condition_start_date AS cohort_start_date,
-# MAGIC     observation_period.observation_period_end_date AS cohort_end_date
+# MAGIC     date_add(earliest_condition_onset.condition_start_date, {max_time_at_risk} ) AS cohort_end_date
 # MAGIC   from
 # MAGIC     earliest_condition_onset
 # MAGIC     INNER JOIN (SELECT person_id, min(visit_start_date) as observation_period_start_date, max(visit_start_date) as observation_period_end_date  FROM visit_occurrence GROUP BY person_id) observation_period 
@@ -236,6 +236,7 @@ drug_hist_att_id = 2
 # MAGIC %py
 # MAGIC sql(f'SET outcome_cohort_id = {outcome_cohort_id}')
 # MAGIC 
+# MAGIC #Everyone who has been diagnosised with CHF, has had appropriate observability window, and has been admitted to the ER
 # MAGIC outcome_cohort_query =  f"""
 # MAGIC   SELECT
 # MAGIC     {outcome_cohort_id} AS cohort_definition_id,
@@ -244,6 +245,9 @@ drug_hist_att_id = 2
 # MAGIC     visit_occurrence.visit_end_date AS cohort_end_date
 # MAGIC   FROM
 # MAGIC     visit_occurrence
+# MAGIC     INNER JOIN omop_patient_risk.cohort 
+# MAGIC       ON visit_occurrence.person_id = cohort.subject_id
+# MAGIC         AND cohort.cohort_definition_id = {target_cohort_id}
 # MAGIC   WHERE
 # MAGIC     visit_occurrence.visit_concept_id IN ({outcome_concept_id})
 # MAGIC   GROUP BY
@@ -273,7 +277,7 @@ sql(f"""
 select count(*) 
 from omop_patient_risk.cohort 
 where cohort_definition_id = {outcome_cohort_id}
-limit 10""")
+limit 10""").display()
 
 # COMMAND ----------
 
