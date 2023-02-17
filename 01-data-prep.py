@@ -162,6 +162,7 @@ drug_hist_att_id = 2
 # MAGIC %py
 # MAGIC #Minimum of 3 years prior observation
 # MAGIC #Minimum of 1 year available after observation
+# MAGIC #Patients who have CHF
 # MAGIC target_cohort_query =  f"""
 # MAGIC SELECT
 # MAGIC     {target_cohort_id} as cohort_definition_id,
@@ -229,25 +230,27 @@ drug_hist_att_id = 2
 
 # MAGIC %md
 # MAGIC ## Outcome cohort
-# MAGIC similary we can create an outcome cohort
+# MAGIC Similary we can create an outcome cohort.
+# MAGIC 
+# MAGIC Everyone who has been diagnosised with CHF, had appropriate observability window, and has been admitted to ER
 
 # COMMAND ----------
 
 # MAGIC %py
 # MAGIC sql(f'SET outcome_cohort_id = {outcome_cohort_id}')
 # MAGIC 
-# MAGIC #Everyone who has been diagnosised with CHF, has had appropriate observability window, and has been admitted to the ER
+# MAGIC 
 # MAGIC outcome_cohort_query =  f"""
 # MAGIC   SELECT
 # MAGIC     {outcome_cohort_id} AS cohort_definition_id,
 # MAGIC     visit_occurrence.person_id AS subject_id,
-# MAGIC     visit_occurrence.visit_start_date AS cohort_start_date,
+# MAGIC     cohort.cohort_start_date AS cohort_start_date,
 # MAGIC     visit_occurrence.visit_end_date AS cohort_end_date
 # MAGIC   FROM
 # MAGIC     visit_occurrence
-# MAGIC     INNER JOIN omop_patient_risk.cohort 
-# MAGIC       ON visit_occurrence.person_id = cohort.subject_id
-# MAGIC         AND cohort.cohort_definition_id = {target_cohort_id}
+# MAGIC       INNER JOIN omop_patient_risk.cohort 
+# MAGIC         ON cohort_definition_id = {target_cohort_id}
+# MAGIC         AND visit_occurrence.subject_id = cohort.subject_id
 # MAGIC   WHERE
 # MAGIC     visit_occurrence.visit_concept_id IN ({outcome_concept_id})
 # MAGIC   GROUP BY
@@ -273,11 +276,12 @@ drug_hist_att_id = 2
 
 # COMMAND ----------
 
+#number of events of ER admission from cohort
 sql(f"""
-select count(*) 
+select count(*) as num_events, count(distinct subject_id) as num_members
 from omop_patient_risk.cohort 
 where cohort_definition_id = {outcome_cohort_id}
-limit 10""").display()
+""").display()
 
 # COMMAND ----------
 
@@ -304,68 +308,46 @@ limit 10""").display()
 # MAGIC ## Feature Engineering
 # MAGIC At this point, we've created our Target & Outcome cohorts  
 # MAGIC 
-# MAGIC Now we want to develop features that are relevant to CHF + ER admission. This is cenetered around Patient attributes, relevant medical history (procedures, drugs, diagnosis, comorbidities)
+# MAGIC Now we want to develop features that are relevant to CHF + ER admission. This is cenetered around Patient attributes and relevant medical history
 
 # COMMAND ----------
 
-# DBTITLE 1,function to validate time overlap
+# MAGIC %md
+# MAGIC ### Patient, Condition, and Drug  Features
+
+# COMMAND ----------
+
 # MAGIC %sql
-# MAGIC --TODO Here ADZ
-# MAGIC CREATE
-# MAGIC OR REPLACE TEMPORARY FUNCTION is_valid_time_overlap (
-# MAGIC   cohort1_start DATE,
-# MAGIC   cohort1_end DATE,
-# MAGIC   cohort2_start DATE,
-# MAGIC   cohort2_end DATE,
-# MAGIC   start_date_offset INT,
-# MAGIC   end_date_offset INT)
-# MAGIC RETURNS BOOLEAN 
-# MAGIC RETURN
-# MAGIC DATE_ADD(cohort1_start, start_date_offset) < cohort2_start
-# MAGIC AND 
-# MAGIC cohort2_end < DATE_ADD(cohort1_end, end_date_offset)
+# MAGIC   --Person Attributes 
+# MAGIC CREATE TABLE IF NOT EXISTS omop531.person_features_offline as
+# MAGIC  select  person_id
+# MAGIC  ,year_of_birth
+# MAGIC  ,race_concept_id
+# MAGIC  ,gender_source_value
+# MAGIC  FROM omop531.person
+# MAGIC  ;
+# MAGIC  
+# MAGIC  --Condition Attributes
+# MAGIC CREATE TABLE IF NOT EXISTS omop531.condition_features_offline as
+# MAGIC SELECT person_id  
+# MAGIC ,condition_era_start_date  
+# MAGIC ,CONDITION_OCCURRENCE_COUNT as VALUE_AS_NUMBER
+# MAGIC ,CONDITION_CONCEPT_ID as VALUE_AS_CONCEPT_ID
+# MAGIC FROM CONDITION_ERA
+# MAGIC ;
+# MAGIC --Drug Attributes
+# MAGIC CREATE TABLE IF NOT EXISTS omop531.drug_features_offline as
+# MAGIC select person_id
+# MAGIC ,drug_exposure_start_date
+# MAGIC ,drug_exposure_end_date
+# MAGIC ,drug_concept_id
+# MAGIC FROM drug_exposure
+# MAGIC ;
 
 # COMMAND ----------
 
 # MAGIC %md
-# MAGIC ### Relevant 
-
-# COMMAND ----------
-
-# MAGIC %py
-# MAGIC insert_query = f"""
-# MAGIC select
-# MAGIC   distinct
-# MAGIC   tc.cohort_definition_id,
-# MAGIC   tc.subject_id,
-# MAGIC   tc.cohort_start_date,
-# MAGIC   tc.cohort_end_date,
-# MAGIC   {outcome_att_id} as ATTRIBUTE_DEFINITION_ID,
-# MAGIC   1 as VALUE_AS_NUMBER,
-# MAGIC   vo.VISIT_CONCEPT_ID as VALUE_AS_CONCEPT_ID
-# MAGIC from
-# MAGIC   omop_patient_risk.cohort tc
-# MAGIC   join visit_occurrence vo on tc.subject_id = vo.PERSON_ID
-# MAGIC where
-# MAGIC   tc.cohort_definition_id = {target_cohort_id}
-# MAGIC   AND vo.VISIT_CONCEPT_ID = {outcome_concept_id}
-# MAGIC   AND is_valid_time_overlap(tc.cohort_start_date, tc.cohort_start_date, vo.visit_start_date, vo.visit_start_date, {min_time_at_risk}, {max_time_at_risk})
-# MAGIC """
-# MAGIC 
-# MAGIC cnt = sql(f'select count(*) as cnt from omop_patient_risk.COHORT_ATTRIBUTE where cohort_definition_id = {target_cohort_id}').collect()[0]['cnt']
-# MAGIC if cnt==0:
-# MAGIC   sql(f"INSERT INTO omop_patient_risk.COHORT_ATTRIBUTE {insert_query}")
-# MAGIC else:
-# MAGIC   sql(f"INSERT INTO omop_patient_risk.COHORT_ATTRIBUTE WHERE ATTRIBUTE_DEFINITION_ID={outcome_att_id} {insert_query}")
-
-# COMMAND ----------
-
-sql(f'select count(*) from omop_patient_risk.COHORT_ATTRIBUTE where ATTRIBUTE_DEFINITION_ID={outcome_att_id}').display()
-
-# COMMAND ----------
-
-# MAGIC %md
-# MAGIC ### Condition History
+# MAGIC ### Create offline Training Dataset from Features
 
 # COMMAND ----------
 
@@ -404,55 +386,6 @@ sql(f'select count(*) from omop_patient_risk.COHORT_ATTRIBUTE where ATTRIBUTE_DE
 # MAGIC   sql(f"INSERT INTO omop_patient_risk.COHORT_ATTRIBUTE {insert_query}")
 # MAGIC else:
 # MAGIC   sql(f"INSERT INTO omop_patient_risk.COHORT_ATTRIBUTE REPLACE WHERE ATTRIBUTE_DEFINITION_ID={condition_hist_att_id} {insert_query}")
-
-# COMMAND ----------
-
-sql(f'select count(*) from omop_patient_risk.COHORT_ATTRIBUTE where ATTRIBUTE_DEFINITION_ID={condition_hist_att_id}')
-
-
-# COMMAND ----------
-
-# MAGIC %md
-# MAGIC ### Drug Exposure History
-
-# COMMAND ----------
-
-# MAGIC %py
-# MAGIC insert_query = f"""select
-# MAGIC   tc.cohort_definition_id,
-# MAGIC   tc.subject_id,
-# MAGIC   tc.cohort_start_date,
-# MAGIC   tc.cohort_end_date,
-# MAGIC   {drug_hist_att_id} as ATTRIBUTE_DEFINITION_ID,
-# MAGIC   sum(de.QUANTITY)+1 as VALUE_AS_NUMBER,
-# MAGIC   de.DRUG_CONCEPT_ID as VALUE_AS_CONCEPT_ID
-# MAGIC from
-# MAGIC   omop_patient_risk.cohort tc
-# MAGIC   join drug_exposure de on tc.subject_id = de.PERSON_ID
-# MAGIC where
-# MAGIC   tc.cohort_definition_id = {target_cohort_id}
-# MAGIC   and de.DRUG_CONCEPT_ID in ({drug1_concept_id}, {drug2_concept_id})
-# MAGIC   AND is_valid_time_overlap(
-# MAGIC     tc.cohort_start_date,
-# MAGIC     tc.cohort_end_date,
-# MAGIC     de.DRUG_EXPOSURE_START_DATE,
-# MAGIC     de.DRUG_EXPOSURE_END_DATE,
-# MAGIC     0,
-# MAGIC     0
-# MAGIC   )
-# MAGIC group by
-# MAGIC   tc.cohort_definition_id,
-# MAGIC   tc.subject_id,
-# MAGIC   tc.cohort_start_date,
-# MAGIC   tc.cohort_end_date,
-# MAGIC   de.DRUG_CONCEPT_ID
-# MAGIC   """
-# MAGIC 
-# MAGIC cnt = sql(f'select count(*) as cnt from omop_patient_risk.COHORT_ATTRIBUTE where ATTRIBUTE_DEFINITION_ID = {drug_hist_att_id}').collect()[0]['cnt']
-# MAGIC if cnt==0:
-# MAGIC   sql(f"INSERT INTO omop_patient_risk.COHORT_ATTRIBUTE {insert_query}")
-# MAGIC else:
-# MAGIC   sql(f"INSERT INTO omop_patient_risk.COHORT_ATTRIBUTE REPLACE WHERE ATTRIBUTE_DEFINITION_ID={drug_hist_att_id} {insert_query}")
 
 # COMMAND ----------
 
