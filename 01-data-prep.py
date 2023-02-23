@@ -16,7 +16,7 @@
 # COMMAND ----------
 
 # MAGIC %sql
-# MAGIC USE OMOP531 -- todo maybe change 
+# MAGIC USE OMOP531 --Specify Database for Notebook
 
 # COMMAND ----------
 
@@ -119,7 +119,7 @@ drug_hist_att_id = 2
 # COMMAND ----------
 
 # MAGIC %md
-# MAGIC ## Target Cohort
+# MAGIC ## 1. Target Cohort
 # MAGIC First we define the [target cohort](https://ohdsi.github.io/TheBookOfOhdsi/Cohorts.html), which is determind based on the following criteria:
 # MAGIC 
 # MAGIC Patients who are newly:
@@ -229,7 +229,7 @@ drug_hist_att_id = 2
 # COMMAND ----------
 
 # MAGIC %md
-# MAGIC ## Outcome cohort
+# MAGIC ## 2. Outcome cohort
 # MAGIC Similary we can create an outcome cohort.
 # MAGIC 
 # MAGIC Everyone who has been diagnosised with CHF, had appropriate observability window, and has been admitted to ER
@@ -245,14 +245,14 @@ drug_hist_att_id = 2
 # MAGIC     {outcome_cohort_id} AS cohort_definition_id,
 # MAGIC     visit_occurrence.person_id AS subject_id,
 # MAGIC     cohort.cohort_end_date AS cohort_start_date, --Diagnosis of CHF 
-# MAGIC     MIN(visit_occurrence.visit_end_date) AS cohort_end_date --First ER Admission
+# MAGIC     MIN(visit_occurrence.visit_end_date) AS cohort_end_date --first er admission
 # MAGIC   FROM
 # MAGIC     visit_occurrence
 # MAGIC       INNER JOIN omop_patient_risk.cohort 
 # MAGIC         ON cohort_definition_id = {target_cohort_id}
 # MAGIC         AND visit_occurrence.person_id = cohort.subject_id
 # MAGIC   WHERE
-# MAGIC     visit_occurrence.visit_concept_id IN ({outcome_concept_id}) --inpatient admission
+# MAGIC     visit_occurrence.visit_concept_id IN ({outcome_concept_id}) --er admission
 # MAGIC       and visit_occurrence.visit_start_date BETWEEN cohort.cohort_end_date AND date_add(cohort.cohort_end_date, {max_time_at_risk})   
 # MAGIC       --Inp admission after CHF diagnosis and before max time at risk
 # MAGIC   GROUP BY
@@ -307,7 +307,7 @@ where cohort_definition_id = {outcome_cohort_id}
 # COMMAND ----------
 
 # MAGIC %md
-# MAGIC ## Feature Engineering
+# MAGIC ## 3. Feature Engineering
 # MAGIC At this point, we've created our Target & Outcome cohorts  
 # MAGIC 
 # MAGIC Now we want to develop features that are relevant to CHF + ER admission. This is centered around patient attributes and relevant medical history
@@ -321,16 +321,33 @@ where cohort_definition_id = {outcome_cohort_id}
 
 # MAGIC %sql
 # MAGIC   --Person Attributes 
-# MAGIC CREATE TABLE IF NOT EXISTS omop531.person_features_offline as
+# MAGIC CREATE TABLE IF NOT EXISTS person_features_offline as
 # MAGIC  select  person_id
 # MAGIC  ,year_of_birth
 # MAGIC  ,race_concept_id
 # MAGIC  ,gender_source_value
-# MAGIC  FROM omop531.person
+# MAGIC  FROM person
 # MAGIC  ;
 # MAGIC  
+# MAGIC 
 # MAGIC  --Medical Condition Attributes
-# MAGIC CREATE TABLE IF NOT EXISTS omop531.condition_features_offline as
+# MAGIC 
+# MAGIC  --parameter for top N commorbidities
+# MAGIC CREATE TABLE IF NOT EXISTS top_n_conditions as
+# MAGIC SELECT VALUE_AS_CONCEPT_ID
+# MAGIC FROM (
+# MAGIC SELECT VALUE_AS_CONCEPT_ID, cnt, ROW_NUMBER() OVER(order by cnt desc) as rn
+# MAGIC FROM (
+# MAGIC   SELECT VALUE_AS_CONCEPT_ID, COUNT(1) as cnt
+# MAGIC   FROM omop_patient_risk.cohort_attribute  
+# MAGIC   GROUP BY 1 
+# MAGIC ) FOO
+# MAGIC ) BAR
+# MAGIC WHERE rn <= getArgument('max_n_commorbidities')
+# MAGIC ;
+# MAGIC 
+# MAGIC  --medical condition features
+# MAGIC CREATE TABLE IF NOT EXISTS condition_features_offline as
 # MAGIC SELECT person_id, condition_era_start_date
 # MAGIC ,SUM(`4112343`) as `4112343`, SUM(`4289517`) as `4289517`
 # MAGIC ,SUM(`432867`) as `432867`, SUM(`4237458`) as `4237458`, SUM(`260139`) as `260139`
@@ -341,21 +358,21 @@ where cohort_definition_id = {outcome_cohort_id}
 # MAGIC ,NVL(`432867`, 0) as `432867`, NVL(`4237458`, 0) as `4237458`, NVL(`260139`, 0) as `260139`
 # MAGIC ,NVL(`312437`, 0) as `312437`, NVL(`254761`, 0) as `254761`, NVL(`40481087`, 0) as `40481087`
 # MAGIC ,NVL(`80502`, 0) as  `80502`, NVL(`437663`, 0) as `437663`
-# MAGIC FROM omop531.CONDITION_ERA
-# MAGIC PIVOT(
+# MAGIC FROM CONDITION_ERA
+# MAGIC  PIVOT(
 # MAGIC 	SUM(CONDITION_OCCURRENCE_COUNT) as VALUE_AS_NUMBER
-# MAGIC 	FOR CONDITION_CONCEPT_ID IN ("4112343", "4289517", "432867", "4237458", "260139", "312437", "254761", "40481087", "80502", "437663")
-# MAGIC )
+# MAGIC 	FOR CONDITION_CONCEPT_ID IN ("4112343", "4289517", "432867", "4237458", "260139", "312437", "254761", "40481087", "80502", "437663") --    (select VALUE_AS_CONCEPT_ID from top_n_conditions) 
+# MAGIC  )
 # MAGIC ) FOO 
 # MAGIC GROUP BY person_id, condition_era_start_date
 # MAGIC ;
 # MAGIC --Drug Attributes
-# MAGIC CREATE TABLE IF NOT EXISTS omop531.drug_features_offline as
+# MAGIC CREATE TABLE IF NOT EXISTS drug_features_offline as
 # MAGIC select person_id, drug_exposure_start_date, SUM(`40163554`) as `40163554`, SUM(`40221901`) as `40221901`
 # MAGIC FROM
 # MAGIC (
 # MAGIC select person_id, drug_exposure_start_date, NVL(`40163554`, 0) as `40163554` , NVL(`40221901`, 0) as `40221901`
-# MAGIC from omop531.drug_exposure person_rx
+# MAGIC from drug_exposure person_rx
 # MAGIC PIVOT(
 # MAGIC 	count(drug_concept_id)
 # MAGIC 	FOR drug_concept_id IN  ("40163554", "40221901")
@@ -366,19 +383,19 @@ where cohort_definition_id = {outcome_cohort_id}
 
 # COMMAND ----------
 
-# MAGIC %md
-# MAGIC ### Display our Model Feature Tables
+# MAGIC %md 
+# MAGIC display model features
 
 # COMMAND ----------
 
-display(spark.table("omop531.person_features_offline"))
-display(spark.table("omop531.condition_features_offline"))
-display(spark.table("omop531.drug_features_offline"))
+display(spark.table("person_features_offline"))
+display(spark.table("condition_features_offline"))
+display(spark.table("drug_features_offline"))
 
 # COMMAND ----------
 
 # MAGIC %md
-# MAGIC ### Create our Offline Feature Store (Point in Time Datasets)
+# MAGIC ### Create Offline Feature Store (Point in Time Datasets)
 
 # COMMAND ----------
 
@@ -386,14 +403,14 @@ from databricks import feature_store
 from databricks.feature_store.client import FeatureStoreClient
 from databricks.feature_store import FeatureLookup
 
-person_df = spark.table("omop531.person_features_offline")
-person_medical_condition_df = spark.table("omop531.condition_features_offline")
-person_rx_df = spark.table("omop531.drug_features_offline")
+person_df = spark.table("person_features_offline")
+person_medical_condition_df = spark.table("condition_features_offline")
+person_rx_df = spark.table("drug_features_offline")
 
 fs = FeatureStoreClient()
 #no point in time information needed
 fs.create_table(
-    "omop531.person_features",
+    "person_features",
     primary_keys=["person_id"],
     df=person_df,
     description="Attributes related to a person identity",
@@ -401,7 +418,7 @@ fs.create_table(
 
 #point in time relationship 
 fs.create_table(
-    "omop531.condition_features",
+    "condition_features",
     primary_keys=["person_id"],
     df=person_medical_condition_df,
     timestamp_keys=["condition_era_start_date"],
@@ -410,7 +427,7 @@ fs.create_table(
 
 #point in time relationship 
 fs.create_table(
-    "omop531.drug_features",
+    "drug_features",
     primary_keys=["person_id"],
     df=person_rx_df,
     timestamp_keys=["drug_exposure_start_date"],
@@ -421,17 +438,12 @@ fs.create_table(
 # COMMAND ----------
 
 # MAGIC %md
-# MAGIC ### Create Training Dataset TODO
-
-# COMMAND ----------
-
-# MAGIC %md
-# MAGIC ### Create Online Feature Stores (In Real Time Data)
+# MAGIC ### Create Online Feature Stores (Real Time Data)
 
 # COMMAND ----------
 
 # MAGIC %sql
-# MAGIC CREATE TABLE IF NOT EXISTS omop531.person_features_online
+# MAGIC CREATE TABLE IF NOT EXISTS person_features_online
 # MAGIC AS 
 # MAGIC SELECT person.person_id 
 # MAGIC --person features
@@ -445,10 +457,10 @@ fs.create_table(
 # MAGIC ,SUM(NVL(`80502`, 0)) as `80502`, SUM(NVL(`437663`, 0)) as `437663`
 # MAGIC --drug features
 # MAGIC ,SUM(NVL(`40163554`, 0)) as `40163554`, SUM(NVL(`40221901`, 0)) as `40221901`
-# MAGIC FROM omop531.person_features_offline person
-# MAGIC LEFT OUTER JOIN omop531.condition_features_offline cond
+# MAGIC FROM person_features_offline person
+# MAGIC LEFT OUTER JOIN condition_features_offline cond
 # MAGIC   on cond.person_id=person.person_id
-# MAGIC LEFT OUTER JOIN omop531.drug_features_offline rx
+# MAGIC LEFT OUTER JOIN drug_features_offline rx
 # MAGIC   on rx.person_id=person.person_id
 # MAGIC GROUP BY person.person_id
 # MAGIC ,person.year_of_birth
@@ -458,14 +470,14 @@ fs.create_table(
 
 # COMMAND ----------
 
-display( spark.table("omop531.person_features_online") )
+display( spark.table("person_features_online") )
 
 # COMMAND ----------
 
-person_online_df = spark.table("omop531.person_features_online")
+person_online_df = spark.table("person_features_online")
 
 fs.create_table(
-    "omop531.person_features_online",
+    "person_features_online",
     primary_keys=["person_id"],
     df=person_online_df,
     description="Person attribute features for online serving",
@@ -473,146 +485,10 @@ fs.create_table(
 
 # COMMAND ----------
 
-# MAGIC %sql
-# MAGIC SHOW TABLES IN omop_patient_risk
-
-# COMMAND ----------
-
-FEATURE_TABLE_NAME = 'omop_patient_risk.drug_features'
-description="drug features"
-
-
-# COMMAND ----------
-
-# DBTITLE 1,add drug features to feature store
-# MAGIC %py
-# MAGIC FEATURE_TABLE_NAME = 'omop_patient_risk.drug_features'
-# MAGIC description="drug features"
-# MAGIC try:
-# MAGIC   fs.drop_table(FEATURE_TABLE_NAME)
-# MAGIC except ValueError:
-# MAGIC   pass
-# MAGIC 
-# MAGIC #TODO Add date parameter to "offline" feature store for model training 
-# MAGIC drug_features_df = sql(f"""
-# MAGIC     select subject_id, VALUE_AS_CONCEPT_ID as drug_concept_id, VALUE_AS_NUMBER as drug_quantity  
-# MAGIC     from omop_patient_risk.cohort_attribute
-# MAGIC     where 
-# MAGIC     ATTRIBUTE_DEFINITION_ID = {drug_hist_att_id} and COHORT_DEFINITION_ID={target_cohort_id}
-# MAGIC     """
-# MAGIC     ).groupBy('subject_id').pivot('drug_concept_id').sum('drug_quantity').fillna(0)
-# MAGIC 
-# MAGIC fs.create_table(
-# MAGIC     name=FEATURE_TABLE_NAME,
-# MAGIC     primary_keys=["subject_id"],
-# MAGIC     df=drug_features_df,
-# MAGIC     schema=drug_features_df.schema,
-# MAGIC     description=description
-# MAGIC )
-
-# COMMAND ----------
-
-sql(f'SELECT * from {FEATURE_TABLE_NAME} limit 10').display()
-
-# COMMAND ----------
-
 # MAGIC %md
-# MAGIC ### Commorbidity history features
-
-# COMMAND ----------
-
-# DBTITLE 1,top n commorbidities
-# MAGIC %py
-# MAGIC sql(f"""
-# MAGIC select VALUE_AS_CONCEPT_ID as condition_concept_id, count(*) as cnt from omop_patient_risk.cohort_attribute where ATTRIBUTE_DEFINITION_ID={condition_hist_att_id} group by 1
-# MAGIC order by 2 desc
-# MAGIC limit {max_n_commorbidities}
-# MAGIC """).createOrReplaceTempView('top_comorbidities')
-
-# COMMAND ----------
-
-# MAGIC %py
-# MAGIC FEATURE_TABLE_NAME = 'omop_patient_risk.condition_history_features'
-# MAGIC description="condition history features"
-# MAGIC try:
-# MAGIC   fs.drop_table(FEATURE_TABLE_NAME)
-# MAGIC except ValueError:
-# MAGIC   pass
-# MAGIC   
-# MAGIC condition_history_df = sql(f"""
-# MAGIC     select subject_id, VALUE_AS_CONCEPT_ID as condition_concept_id, VALUE_AS_NUMBER as n_condition_occurance 
-# MAGIC     from omop_patient_risk.cohort_attribute
-# MAGIC     where 
-# MAGIC     ATTRIBUTE_DEFINITION_ID = {condition_hist_att_id} and COHORT_DEFINITION_ID={target_cohort_id}
-# MAGIC     and
-# MAGIC     VALUE_AS_CONCEPT_ID in (select condition_concept_id from top_comorbidities)
-# MAGIC     """
-# MAGIC     ).groupBy('subject_id').pivot('condition_concept_id').sum('n_condition_occurance').fillna(0)
-# MAGIC 
-# MAGIC fs.create_table(
-# MAGIC     name=FEATURE_TABLE_NAME,
-# MAGIC     primary_keys=["subject_id"],
-# MAGIC     df=condition_history_df,
-# MAGIC     schema=condition_history_df.schema,
-# MAGIC     description=description
-# MAGIC )
-
-# COMMAND ----------
-
-sql(f'select * from {FEATURE_TABLE_NAME} limit 10').display()
-
-# COMMAND ----------
-
-# MAGIC %md
-# MAGIC ### Demographics information 
-
-# COMMAND ----------
-
-# MAGIC %py
-# MAGIC FEATURE_TABLE_NAME = "omop_patient_risk.subject_demographics_features"
-# MAGIC description="demographic features"
-# MAGIC try:
-# MAGIC   fs.drop_table(FEATURE_TABLE_NAME)
-# MAGIC except ValueError:
-# MAGIC   pass
-# MAGIC   
-# MAGIC subject_demographics_features_df = sql(
-# MAGIC     f"""select 
-# MAGIC     c.subject_id,
-# MAGIC     p.GENDER_CONCEPT_ID,
-# MAGIC     p.YEAR_OF_BIRTH,
-# MAGIC     date_diff(c.cohort_start_date, p.BIRTH_DATETIME) as age_in_days,
-# MAGIC     p.RACE_CONCEPT_ID,
-# MAGIC     p.ETHNICITY_CONCEPT_ID
-# MAGIC   from cohort c
-# MAGIC   join person p on c.subject_id = p.PERSON_ID
-# MAGIC   where c.cohort_definition_id = {target_cohort_id}
-# MAGIC   """
-# MAGIC )
-# MAGIC fs.create_table(
-# MAGIC     name=FEATURE_TABLE_NAME,
-# MAGIC     primary_keys=["subject_id"],
-# MAGIC     df=subject_demographics_features_df,
-# MAGIC     schema=subject_demographics_features_df.schema,
-# MAGIC     description=description
-# MAGIC )
-# MAGIC # select * from subject_demographics limit 10
-
-# COMMAND ----------
-
-sql(f'select * from {FEATURE_TABLE_NAME} limit 10').display()
-
-# COMMAND ----------
-
-# MAGIC %md
-# MAGIC ##  3. Training Dataset
+# MAGIC ## 4 Training Dataset
 # MAGIC Now that our cohorts are in place, we can create the final dataset. we then use Databricks AutoML to train a model for predicting risk and also understand features impacting patient risk. 
 # MAGIC To make it simpler, first we create a function that decides whether two cohorts overlap:
-
-# COMMAND ----------
-
-# MAGIC %sql
-# MAGIC SHOW TABLES FROM omop_patient_risk
 
 # COMMAND ----------
 
