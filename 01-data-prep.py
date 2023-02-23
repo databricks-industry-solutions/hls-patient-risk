@@ -477,7 +477,7 @@ display( spark.table("person_features_online") )
 person_online_df = spark.table("person_features_online")
 
 fs.create_table(
-    "person_features_online",
+    "person_online",
     primary_keys=["person_id"],
     df=person_online_df,
     description="Person attribute features for online serving",
