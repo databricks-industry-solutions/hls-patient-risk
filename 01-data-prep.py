@@ -331,6 +331,12 @@ where cohort_definition_id = {outcome_cohort_id}
 # MAGIC  
 # MAGIC  --Medical Condition Attributes
 # MAGIC CREATE TABLE IF NOT EXISTS omop531.condition_features_offline as
+# MAGIC SELECT person_id, condition_era_start_date
+# MAGIC ,SUM(`4112343`) as `4112343`, SUM(`4289517`) as `4289517`
+# MAGIC ,SUM(`432867`) as `432867`, SUM(`4237458`) as `4237458`, SUM(`260139`) as `260139`
+# MAGIC ,SUM(`312437`) as `312437`, SUM(`254761`) as `254761`, SUM(`40481087`) as `40481087`
+# MAGIC ,SUM(`80502`) as `80502`, SUM(`437663`) as `437663`
+# MAGIC FROM (
 # MAGIC SELECT person_id, condition_era_start_date, NVL(`4112343`, 0) as `4112343`, NVL(`4289517`,0)  as `4289517`
 # MAGIC ,NVL(`432867`, 0) as `432867`, NVL(`4237458`, 0) as `4237458`, NVL(`260139`, 0) as `260139`
 # MAGIC ,NVL(`312437`, 0) as `312437`, NVL(`254761`, 0) as `254761`, NVL(`40481087`, 0) as `40481087`
@@ -340,15 +346,22 @@ where cohort_definition_id = {outcome_cohort_id}
 # MAGIC 	SUM(CONDITION_OCCURRENCE_COUNT) as VALUE_AS_NUMBER
 # MAGIC 	FOR CONDITION_CONCEPT_ID IN ("4112343", "4289517", "432867", "4237458", "260139", "312437", "254761", "40481087", "80502", "437663")
 # MAGIC )
+# MAGIC ) FOO 
+# MAGIC GROUP BY person_id, condition_era_start_date
 # MAGIC ;
 # MAGIC --Drug Attributes
 # MAGIC CREATE TABLE IF NOT EXISTS omop531.drug_features_offline as
+# MAGIC select person_id, drug_exposure_start_date, SUM(`40163554`) as `40163554`, SUM(`40221901`) as `40221901`
+# MAGIC FROM
+# MAGIC (
 # MAGIC select person_id, drug_exposure_start_date, NVL(`40163554`, 0) as `40163554` , NVL(`40221901`, 0) as `40221901`
 # MAGIC from omop531.drug_exposure person_rx
 # MAGIC PIVOT(
 # MAGIC 	count(drug_concept_id)
 # MAGIC 	FOR drug_concept_id IN  ("40163554", "40221901")
 # MAGIC )
+# MAGIC ) FOO
+# MAGIC GROUP BY person_id, drug_exposure_start_date
 # MAGIC ;
 
 # COMMAND ----------
@@ -358,15 +371,9 @@ where cohort_definition_id = {outcome_cohort_id}
 
 # COMMAND ----------
 
-sql("""
-select * from omop531.person_features_offline limit 10
-""").display()
-sql("""
-select * from omop531.condition_features_offline limit 10
-""").display()
-sql("""
-select * from omop531.drug_features_offline limit 10
-""").display()
+display(spark.table("omop531.person_features_offline"))
+display(spark.table("omop531.condition_features_offline"))
+display(spark.table("omop531.drug_features_offline"))
 
 # COMMAND ----------
 
@@ -377,9 +384,14 @@ select * from omop531.drug_features_offline limit 10
 
 from databricks import feature_store
 from databricks.feature_store.client import FeatureStoreClient
-from databricks.feature_store import feature_table, FeatureLookup
+from databricks.feature_store import FeatureLookup
+
+person_df = spark.table("omop531.person_features_offline")
+person_medical_condition_df = spark.table("omop531.condition_features_offline")
+person_rx_df = spark.table("omop531.drug_features_offline")
 
 fs = FeatureStoreClient()
+#no point in time information needed
 fs.create_table(
     "omop531.person_features",
     primary_keys=["person_id"],
@@ -387,14 +399,29 @@ fs.create_table(
     description="Attributes related to a person identity",
 )
 
+#point in time relationship 
+fs.create_table(
+    "omop531.condition_features",
+    primary_keys=["person_id"],
+    df=person_medical_condition_df,
+    timestamp_keys=["condition_era_start_date"],
+    description="Attributes related to a person's medical history",
+)
 
-
+#point in time relationship 
+fs.create_table(
+    "omop531.drug_features",
+    primary_keys=["person_id"],
+    df=person_rx_df,
+    timestamp_keys=["drug_exposure_start_date"],
+    description="Attributes related to a person's drug history",
+)
 
 
 # COMMAND ----------
 
 # MAGIC %md
-# MAGIC ### Create Training Dataset
+# MAGIC ### Create Training Dataset TODO
 
 # COMMAND ----------
 
@@ -403,7 +430,46 @@ fs.create_table(
 
 # COMMAND ----------
 
-fs = feature_store.FeatureStoreClient()
+# MAGIC %sql
+# MAGIC CREATE TABLE IF NOT EXISTS omop531.person_features_online
+# MAGIC AS 
+# MAGIC SELECT person.person_id 
+# MAGIC --person features
+# MAGIC ,person.year_of_birth
+# MAGIC ,person.race_concept_id
+# MAGIC ,person.gender_source_value
+# MAGIC --condition features
+# MAGIC ,SUM(NVL(`4112343`, 0)) as `4112343`, SUM(NVL(`4289517`, 0)) as `4289517`
+# MAGIC ,SUM(NVL(`432867`, 0)) as `432867`, SUM(NVL(`4237458`, 0)) as `4237458`, SUM(NVL(`260139`, 0)) as `260139`
+# MAGIC ,SUM(NVL(`312437`, 0)) as `312437`, SUM(NVL(`254761`, 0)) as `254761`, SUM(NVL(`40481087`, 0)) as `40481087`
+# MAGIC ,SUM(NVL(`80502`, 0)) as `80502`, SUM(NVL(`437663`, 0)) as `437663`
+# MAGIC --drug features
+# MAGIC ,SUM(NVL(`40163554`, 0)) as `40163554`, SUM(NVL(`40221901`, 0)) as `40221901`
+# MAGIC FROM omop531.person_features_offline person
+# MAGIC LEFT OUTER JOIN omop531.condition_features_offline cond
+# MAGIC   on cond.person_id=person.person_id
+# MAGIC LEFT OUTER JOIN omop531.drug_features_offline rx
+# MAGIC   on rx.person_id=person.person_id
+# MAGIC GROUP BY person.person_id
+# MAGIC ,person.year_of_birth
+# MAGIC ,person.race_concept_id
+# MAGIC ,person.gender_source_value
+# MAGIC   
+
+# COMMAND ----------
+
+display( spark.table("omop531.person_features_online") )
+
+# COMMAND ----------
+
+person_online_df = spark.table("omop531.person_features_online")
+
+fs.create_table(
+    "omop531.person_features_online",
+    primary_keys=["person_id"],
+    df=person_online_df,
+    description="Person attribute features for online serving",
+)
 
 # COMMAND ----------
 
