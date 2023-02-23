@@ -1,4 +1,8 @@
 # Databricks notebook source
+# MAGIC %md This solution accelerator notebook is also available at https://github.com/databricks-industry-solutions/hls-patient-risk
+
+# COMMAND ----------
+
 # MAGIC %md
 # MAGIC # Patient Level Risk Prediction: Cohorts and Features
 # MAGIC In this notebook we use data already available in OMOP 5.3 to create:
