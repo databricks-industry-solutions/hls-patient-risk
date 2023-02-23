@@ -383,6 +383,19 @@ where cohort_definition_id = {outcome_cohort_id}
 
 # COMMAND ----------
 
+### An alternative way to create medical condition history without hardcoding values
+#sql(f"""
+#select subject_id, VALUE_AS_CONCEPT_ID as condition_concept_id, VALUE_AS_NUMBER as n_condition_occurance 
+#from omop_patient_risk.cohort_attribute
+#where 
+#ATTRIBUTE_DEFINITION_ID = {condition_hist_att_id} and COHORT_DEFINITION_ID={target_cohort_id}
+#and
+#VALUE_AS_CONCEPT_ID in (select VALUE_AS_CONCEPT_ID from top_n_conditions)
+#"""
+#).groupBy('subject_id').pivot('VALUE_AS_CONCEPT_ID').sum('n_condition_occurance').fillna(0)
+
+# COMMAND ----------
+
 # MAGIC %md 
 # MAGIC display model features
 
