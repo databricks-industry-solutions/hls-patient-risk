@@ -416,33 +416,26 @@ from databricks import feature_store
 from databricks.feature_store.client import FeatureStoreClient
 from databricks.feature_store import FeatureLookup
 
-person_df = spark.table("person_features_offline")
-person_medical_condition_df = spark.table("condition_features_offline")
-person_rx_df = spark.table("drug_features_offline")
-
 fs = FeatureStoreClient()
 #no point in time information needed
-fs.create_table(
-    "person_features",
+fs.register_table(
+    delta_table="person_features_offline",
     primary_keys=["person_id"],
-    df=person_df,
     description="Attributes related to a person identity",
 )
 
 #point in time relationship 
-fs.create_table(
-    "condition_features",
+fs.register_table(
+    delta_table="condition_features_offline",
     primary_keys=["person_id"],
-    df=person_medical_condition_df,
     timestamp_keys=["condition_era_start_date"],
     description="Attributes related to a person's medical history",
 )
 
 #point in time relationship 
-fs.create_table(
-    "drug_features",
+fs.register_table(
+    delta_table="drug_features_offline",
     primary_keys=["person_id"],
-    df=person_rx_df,
     timestamp_keys=["drug_exposure_start_date"],
     description="Attributes related to a person's drug history",
 )
@@ -487,12 +480,10 @@ display( spark.table("person_features_online") )
 
 # COMMAND ----------
 
-person_online_df = spark.table("person_features_online")
-
-fs.create_table(
-    "person_online",
+#Online Feature Store
+fs.register_table(
+    delta_table="person_features_online",
     primary_keys=["person_id"],
-    df=person_online_df,
     description="Person attribute features for online serving",
 )
 
@@ -501,131 +492,63 @@ fs.create_table(
 # MAGIC %md
 # MAGIC ## 4 Training Dataset
 # MAGIC Now that our cohorts are in place, we can create the final dataset. we then use Databricks AutoML to train a model for predicting risk and also understand features impacting patient risk. 
-# MAGIC To make it simpler, first we create a function that decides whether two cohorts overlap:
 
 # COMMAND ----------
 
-# DBTITLE 1,add outcome labels
-# MAGIC %py
-# MAGIC outcomes_df = sql(f"""
-# MAGIC     select subject_id, VALUE_AS_CONCEPT_ID as outcome_concept_id, VALUE_AS_NUMBER as visited_emergency 
-# MAGIC     from omop_patient_risk.cohort_attribute
-# MAGIC     where 
-# MAGIC     ATTRIBUTE_DEFINITION_ID = {outcome_att_id} and COHORT_DEFINITION_ID={target_cohort_id}
-# MAGIC     """
-# MAGIC     ).groupBy('subject_id').pivot('outcome_concept_id').min('visited_emergency').fillna(0)
-
-# COMMAND ----------
-
-# DBTITLE 1,create training data
-# MAGIC %py
-# MAGIC training_df = (
-# MAGIC   sql('select subject_id from omop_patient_risk.cohort')
-# MAGIC   .filter(f'cohort_definition_id={target_cohort_id}')
-# MAGIC   .join(outcomes_df, how='left',on='subject_id')
-# MAGIC   .selectExpr('subject_id',f"CAST(`{outcome_concept_id}` AS INT) as outcome")
-# MAGIC   .fillna(0)
-# MAGIC   )
-
-# COMMAND ----------
-
-# DBTITLE 1,proportion of patients with the outcome
-training_df.selectExpr('avg(outcome)').display()
-
-# COMMAND ----------
-
-# DBTITLE 1,add features to the training dataset
+# DBTITLE 1,create training data with outcomes and features 
 from databricks.feature_store import FeatureLookup
-
+#Outocme that to predict
+outcome_df = spark.sql(f"""
+SELECT target_cohort.subject_id
+,target_cohort.cohort_end_date as prediction_date --date of CHF diagnosis (t=0 window for predicting adverse event)
+,case when outcome_cohort.subject_id is null then 0 else 1 end as is_adverse_event_outcome -- 1 means adverse event occurred 
+from omop_patient_risk.cohort target_cohort 
+   LEFT OUTER JOIN omop_patient_risk.cohort outcome_cohort 
+    on target_cohort.subject_id = outcome_cohort.subject_id 
+      and outcome_cohort.cohort_definition_id = {outcome_cohort_id}
+      and target_cohort.cohort_definition_id = {target_cohort_id}
+""")
 
 feature_lookups = [
     FeatureLookup(
-      table_name = 'omop_patient_risk.subject_demographics_features',
-      lookup_key = 'subject_id'
+      table_name = 'person_features_offline',
+      lookup_key = 'subject_id',
+      feature_names = ['year_of_birth', 'race_concept_id', 'gender_source_value']
     ),
     FeatureLookup(
-      table_name = 'omop_patient_risk.drug_features',
-      lookup_key = 'subject_id'
+      table_name = 'condition_features_offline',
+      lookup_key = 'subject_id',
+      rename_outputs={"condition_era_start_date": "prediction_date"},
+      timestamp_lookup_key = 'prediction_date',
+      feature_names = ["4112343", "4289517", "432867", "4237458", "260139", "312437", "254761", "40481087", "80502", "437663"]
     ),
     FeatureLookup(
-      table_name = 'omop_patient_risk.condition_history_features',
-      lookup_key = 'subject_id'
+      table_name = 'drug_features_offline',
+      lookup_key = 'subject_id',
+      rename_outputs={"drug_exposure_start_date": "prediction_date"},
+      timestamp_lookup_key = 'prediction_date',
+      feature_names = ["40163554", "40221901"]
     )
   ]
 
 training_set = fs.create_training_set(
-  df=training_df,
+  df=outcome_df,
   feature_lookups = feature_lookups,
-  label = 'outcome',
- exclude_columns = ['subject_id']
+  label = 'is_adverse_event_outcome',
+ exclude_columns = ['subject_id', 'prediction_date']
 )
 
-training_df = training_set.load_df().fillna(0)
+training_df = training_set.load_df()
+
 
 # COMMAND ----------
 
-training_df.selectExpr('avg(outcome)').display()
+# DBTITLE 1,proportion of patients with the outcome
+training_df.selectExpr('avg(is_adverse_event_outcome)').display()
 
 # COMMAND ----------
 
 training_df.write.saveAsTable('omop_patient_risk.training_data')
-
-# COMMAND ----------
-
-# MAGIC %md
-# MAGIC ```
-# MAGIC with drugs as(
-# MAGIC SELECT
-# MAGIC 
-# MAGIC                 C.concept_id Drug_concept_id,
-# MAGIC 
-# MAGIC                 C.concept_name Drug_concept_name,
-# MAGIC 
-# MAGIC                 C.concept_code Drug_concept_code,
-# MAGIC 
-# MAGIC                 C.concept_class_id Drug_concept_class,
-# MAGIC 
-# MAGIC                 C.standard_concept Drug_concept_level,
-# MAGIC 
-# MAGIC                 C.vocabulary_id Drug_concept_vocab_id,
-# MAGIC 
-# MAGIC                 V.vocabulary_name Drug_concept_vocab_code,
-# MAGIC 
-# MAGIC                ( CASE C.vocabulary_id
-# MAGIC 
-# MAGIC                         WHEN 'RxNorm' THEN
-# MAGIC 
-# MAGIC                                 CASE lower(C.concept_class_id)
-# MAGIC 
-# MAGIC                                 WHEN 'clinical drug' THEN 'Yes'
-# MAGIC 
-# MAGIC                                 WHEN 'branded drug' THEN 'Yes'
-# MAGIC 
-# MAGIC                                 WHEN 'ingredient' THEN 'Yes'
-# MAGIC 
-# MAGIC                                 WHEN 'branded pack' THEN 'Yes'
-# MAGIC 
-# MAGIC                                 WHEN 'clinical pack' THEN 'Yes'
-# MAGIC 
-# MAGIC                                 ELSE 'No' END
-# MAGIC 
-# MAGIC                         ELSE 'No' END) Is_Drug_Concept_flag
-# MAGIC 
-# MAGIC                 -- (CASE C.domain_id WHEN 'Drug' THEN 'Yes' ELSE 'No' END) Is_Drug_Concept_flag
-# MAGIC 
-# MAGIC         FROM
-# MAGIC 
-# MAGIC                 concept C,
-# MAGIC 
-# MAGIC                 vocabulary V
-# MAGIC 
-# MAGIC         WHERE
-# MAGIC 
-# MAGIC                 C.vocabulary_id = V.vocabulary_id
-# MAGIC                 )
-# MAGIC select * from drugs
-# MAGIC where drug_concept_id in (SELECT distinct(drug_concept_id) FROM drug_exposure)
-# MAGIC ```
 
 # COMMAND ----------
 
