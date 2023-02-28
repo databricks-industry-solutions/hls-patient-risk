@@ -14,11 +14,6 @@
 
 # COMMAND ----------
 
-# MAGIC %md
-# MAGIC dbutils.widgets.removeAll()
-
-# COMMAND ----------
-
 # MAGIC %sql
 # MAGIC USE OMOP531 --Specify Database for Notebook
 
@@ -72,6 +67,16 @@
 
 # COMMAND ----------
 
+# MAGIC %md 
+# MAGIC Setup Parameters & Config
+
+# COMMAND ----------
+
+# MAGIC %sql
+# MAGIC CREATE WIDGET text max_n_commorbidities DEFAULT "10";
+
+# COMMAND ----------
+
 # MAGIC %py
 # MAGIC dbutils.widgets.text('outcome_concept_id', '9203')   #Emergency Room Visit
 # MAGIC outcome_concept_id = dbutils.widgets.get('outcome_concept_id')
@@ -89,8 +94,6 @@
 # MAGIC min_time_at_risk = dbutils.widgets.get('min_time_at_risk')
 # MAGIC dbutils.widgets.text('max_time_at_risk', '365')
 # MAGIC max_time_at_risk = dbutils.widgets.get('max_time_at_risk')
-# MAGIC dbutils.widgets.text('max_n_commorbidities', '10')
-# MAGIC max_n_commorbidities = dbutils.widgets.get('max_n_commorbidities')
 
 # COMMAND ----------
 
