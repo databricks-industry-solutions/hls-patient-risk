@@ -37,41 +37,56 @@ job_json = {
         "max_concurrent_runs": 1,
         "tags": {
             "usage": "solacc_testing",
-            "group": "SOLACC"
+            "group": "HLS",
+            "accelerator": "hls-patient-risk"
         },
         "tasks": [
             {
-                "job_cluster_key": "sample_solacc_cluster",
+                "job_cluster_key": "patient_risk_cluster",
                 "notebook_task": {
-                    "notebook_path": f"01_Introduction_And_Setup"
+                    "notebook_path": f"00-README"
                 },
-                "task_key": "sample_solacc_01"
+                "task_key": "patient_risk_01"
             },
             {
-                "job_cluster_key": "sample_solacc_cluster",
+                "job_cluster_key": "patient_risk_cluster",
                 "notebook_task": {
-                    "notebook_path": f"02_Analysis"
+                    "notebook_path": f"01-data-prep"
                 },
-                "task_key": "sample_solacc_02",
+                "task_key": "patient_risk_02",
                 "depends_on": [
                     {
-                        "task_key": "sample_solacc_01"
+                        "task_key": "patient_risk_01"
+                    }
+                ]
+            },
+            {
+                "job_cluster_key": "patient_risk_cluster",
+                "notebook_task": {
+                    "notebook_path": f"02-automl-best-model"
+                },
+                "task_key": "patient_risk_03",
+                "depends_on": [
+                    {
+                        "task_key": "patient_risk_02"
                     }
                 ]
             }
         ],
         "job_clusters": [
             {
-                "job_cluster_key": "sample_solacc_cluster",
+                "job_cluster_key": "patient_risk_cluster",
                 "new_cluster": {
-                    "spark_version": "11.3.x-cpu-ml-scala2.12",
+                    "spark_version": "12.1.x-cpu-ml-scala2.12",
                 "spark_conf": {
                     "spark.databricks.delta.formatCheck.enabled": "false"
                     },
                     "num_workers": 2,
                     "node_type_id": {"AWS": "i3.xlarge", "MSA": "Standard_DS3_v2", "GCP": "n1-highmem-4"},
                     "custom_tags": {
-                        "usage": "solacc_testing"
+                        "usage": "solacc_testing",
+                        "group": "HLS",
+                        "accelerator": "hls-patient-risk"
                     },
                 }
             }
