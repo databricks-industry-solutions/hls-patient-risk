@@ -72,35 +72,25 @@
 
 # COMMAND ----------
 
-# DBTITLE 1,Set up parameters
-# MAGIC %sql
-# MAGIC CREATE WIDGET text target_condition_concept_id DEFAULT "4229440"; -- CHF
-# MAGIC CREATE WIDGET text outcome_concept_id DEFAULT "9203"; -- Emergency Room Visit
-# MAGIC 
-# MAGIC CREATE WIDGET text drug1_concept_id DEFAULT "40163554"; -- Warfarin
-# MAGIC CREATE WIDGET text drug2_concept_id DEFAULT "40221901"; -- Acetaminophen
-# MAGIC 
-# MAGIC CREATE WIDGET text min_observation_period DEFAULT "1095"; -- whashout period in days
-# MAGIC CREATE WIDGET text min_time_at_risk DEFAULT "7";
-# MAGIC CREATE WIDGET text max_time_at_risk DEFAULT "365";
-# MAGIC 
-# MAGIC CREATE WIDGET text cond_history_years DEFAULT "5";
-# MAGIC CREATE WIDGET text max_n_commorbidities DEFAULT "10";
-
-# COMMAND ----------
-
 # MAGIC %py
-# MAGIC drug1_concept_id = dbutils.widgets.get('drug1_concept_id')
-# MAGIC drug2_concept_id = dbutils.widgets.get('drug2_concept_id')
+# MAGIC dbutils.widgets.text('outcome_concept_id', '9203')   #Emergency Room Visit
 # MAGIC outcome_concept_id = dbutils.widgets.get('outcome_concept_id')
+# MAGIC dbutils.widgets.text('target_condition_concept_id', '4229440') #CHF
+# MAGIC target_condition_concept_id = dbutils.widgets.get('target_condition_concept_id')
+# MAGIC 
+# MAGIC dbutils.widgets.text('drug1_concept_id', '40163554') #Warfarin
+# MAGIC drug1_concept_id = dbutils.widgets.get('drug1_concept_id')
+# MAGIC dbutils.widgets.text('drug2_concept_id', '40221901') #Acetaminophen
+# MAGIC drug2_concept_id = dbutils.widgets.get('drug2_concept_id')
+# MAGIC dbutils.widgets.text('min_observation_period', '1095') #whashout period in days
 # MAGIC min_observation_period = dbutils.widgets.get('min_observation_period')
 # MAGIC 
+# MAGIC dbutils.widgets.text('min_time_at_risk', '7')
 # MAGIC min_time_at_risk = dbutils.widgets.get('min_time_at_risk')
-# MAGIC max_time_at_risk= dbutils.widgets.get('max_time_at_risk')
-# MAGIC cond_history_years= dbutils.widgets.get('cond_history_years')
-# MAGIC max_n_commorbidities= dbutils.widgets.get('max_n_commorbidities')
-# MAGIC 
-# MAGIC target_condition_concept_id = dbutils.widgets.get('target_condition_concept_id')
+# MAGIC dbutils.widgets.text('max_time_at_risk', '365')
+# MAGIC max_time_at_risk = dbutils.widgets.get('max_time_at_risk')
+# MAGIC dbutils.widgets.text('max_n_commorbidities', '10')
+# MAGIC max_n_commorbidities = dbutils.widgets.get('max_n_commorbidities')
 
 # COMMAND ----------
 
