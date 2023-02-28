@@ -59,18 +59,6 @@ job_json = {
                         "task_key": "patient_risk_01"
                     }
                 ]
-            },
-            {
-                "job_cluster_key": "patient_risk_cluster",
-                "notebook_task": {
-                    "notebook_path": f"02-automl-best-model"
-                },
-                "task_key": "patient_risk_03",
-                "depends_on": [
-                    {
-                        "task_key": "patient_risk_02"
-                    }
-                ]
             }
         ],
         "job_clusters": [
