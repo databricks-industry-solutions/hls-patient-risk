@@ -129,8 +129,9 @@ drug_hist_att_id = 2
 # COMMAND ----------
 
 # DBTITLE 1,Create condition cohort
-# MAGIC %sql
-# MAGIC DROP TABLE IF EXISTS earliest_condition_onset;
+# MAGIC %py
+# MAGIC sql(f"""DROP TABLE IF EXISTS earliest_condition_onset;""")
+# MAGIC sql(f"""
 # MAGIC CREATE TABLE earliest_condition_onset AS (
 # MAGIC   SELECT
 # MAGIC     person_id,
@@ -143,15 +144,13 @@ drug_hist_att_id = 2
 # MAGIC       FROM
 # MAGIC         concept_ancestor
 # MAGIC       WHERE
-# MAGIC         ancestor_concept_id = ${target_condition_concept_id}
+# MAGIC         ancestor_concept_id = '{target_condition_concept_id}'
 # MAGIC     )
 # MAGIC   GROUP BY
 # MAGIC     person_id
 # MAGIC );
-# MAGIC SELECT
-# MAGIC   count(*)
-# MAGIC from
-# MAGIC   earliest_condition_onset
+# MAGIC """)
+# MAGIC display(sql("""SELECT count(*) from earliest_condition_onset"""))
 
 # COMMAND ----------
 
