@@ -1,4 +1,8 @@
 # Databricks notebook source
+# MAGIC %md This solution accelerator notebook is also available at https://github.com/databricks-industry-solutions/hls-patient-risk
+
+# COMMAND ----------
+
 # MAGIC %md
 # MAGIC ## Patient-Level Risk Scoring Based on Comorbidity History
 # MAGIC Longitudinal health records, contain tremendous amount of information with regard to a patients risk factors. For example, using standrad ML techniques, one can investigate the correlation between a patient's health history and a given outcome such as heart attack. In this case, we use a patient’s condition history, durgs taken and demographics information as input, and  use a patinet's encounter's history to identify patients who have had a heart attack within a given window of time. 
