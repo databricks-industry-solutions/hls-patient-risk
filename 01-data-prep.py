@@ -16,23 +16,23 @@
 # COMMAND ----------
 
 # MAGIC %sql
-# MAGIC USE OMOP531 -- todo maybe change 
+# MAGIC USE patient_risk_altered_OMOP -- todo maybe change 
 
 # COMMAND ----------
 
 # MAGIC %sql
-# MAGIC DROP SCHEMA IF EXISTS omop_patient_risk CASCADE
+# MAGIC DROP SCHEMA IF EXISTS amir_omop_patient_risk CASCADE
 
 # COMMAND ----------
 
 # MAGIC %sql
-# MAGIC CREATE SCHEMA IF NOT EXISTS omop_patient_risk
+# MAGIC CREATE SCHEMA IF NOT EXISTS amir_omop_patient_risk
 
 # COMMAND ----------
 
 # MAGIC %sql
 # MAGIC CREATE
-# MAGIC OR REPLACE TABLE omop_patient_risk.cohort (
+# MAGIC OR REPLACE TABLE amir_omop_patient_risk.cohort (
 # MAGIC   cohort_definition_id LONG,
 # MAGIC   subject_id LONG,
 # MAGIC   cohort_start_date DATE,
@@ -43,7 +43,7 @@
 
 # MAGIC %sql
 # MAGIC CREATE
-# MAGIC OR REPLACE TABLE omop_patient_risk.cohort_definition (
+# MAGIC OR REPLACE TABLE amir_omop_patient_risk.cohort_definition (
 # MAGIC   cohort_definition_id LONG,
 # MAGIC   cohort_definition_name STRING,
 # MAGIC   cohort_definition_description STRING,
@@ -56,7 +56,7 @@
 
 # MAGIC %sql
 # MAGIC CREATE
-# MAGIC OR REPLACE TABLE omop_patient_risk.COHORT_ATTRIBUTE (
+# MAGIC OR REPLACE TABLE amir_omop_patient_risk.COHORT_ATTRIBUTE (
 # MAGIC   COHORT_DEFINITION_ID LONG,
 # MAGIC   SUBJECT_ID LONG,
 # MAGIC   COHORT_START_DATE DATE,
@@ -175,18 +175,18 @@ drug_hist_att_id = 2
 # MAGIC     AND earliest_condition_onset.condition_start_date < observation_period.observation_period_end_date
 # MAGIC """
 # MAGIC 
-# MAGIC cnt = sql(f'select count(*) as cnt from omop_patient_risk.cohort').collect()[0]['cnt']
+# MAGIC cnt = sql(f'select count(*) as cnt from amir_omop_patient_risk.cohort').collect()[0]['cnt']
 # MAGIC if cnt==0:
-# MAGIC   sql(f'INSERT INTO omop_patient_risk.cohort {target_cohort_query}')
+# MAGIC   sql(f'INSERT INTO amir_omop_patient_risk.cohort {target_cohort_query}')
 # MAGIC else:
-# MAGIC   sql(f'INSERT INTO omop_patient_risk.cohort REPLACE WHERE cohort_definition_id = {target_cohort_id} {target_cohort_query}')
+# MAGIC   sql(f'INSERT INTO amir_omop_patient_risk.cohort REPLACE WHERE cohort_definition_id = {target_cohort_id} {target_cohort_query}')
 
 # COMMAND ----------
 
 # DBTITLE 1,target cohort
 # MAGIC %py
 # MAGIC sql(f"""select * 
-# MAGIC from omop_patient_risk.cohort 
+# MAGIC from amir_omop_patient_risk.cohort 
 # MAGIC where cohort_definition_id = {target_cohort_id}
 # MAGIC limit 10""").display()
 
@@ -195,7 +195,7 @@ drug_hist_att_id = 2
 # DBTITLE 1,count of subject in target control
 # MAGIC %py
 # MAGIC sql(f"""select count(*) 
-# MAGIC from omop_patient_risk.cohort 
+# MAGIC from amir_omop_patient_risk.cohort 
 # MAGIC where cohort_definition_id = {target_cohort_id}
 # MAGIC """).display()
 
@@ -210,17 +210,17 @@ drug_hist_att_id = 2
 # MAGIC """
 # MAGIC 
 # MAGIC insert_query = f"select {target_cohort_id}, '{target_cohort_concept_name} Cohort', '{target_cohort_description}', 1, '{target_cohort_query}', current_date()"
-# MAGIC cnt = sql(f'select count(*) as cnt from omop_patient_risk.cohort_definition').collect()[0]['cnt']
+# MAGIC cnt = sql(f'select count(*) as cnt from amir_omop_patient_risk.cohort_definition').collect()[0]['cnt']
 # MAGIC 
 # MAGIC if cnt==0:
-# MAGIC   sql(f"INSERT INTO omop_patient_risk.cohort_definition {insert_query}")
+# MAGIC   sql(f"INSERT INTO amir_omop_patient_risk.cohort_definition {insert_query}")
 # MAGIC else:
-# MAGIC   sql(f"INSERT INTO omop_patient_risk.cohort_definition REPLACE WHERE cohort_definition_id = {target_cohort_id} {insert_query}")
+# MAGIC   sql(f"INSERT INTO amir_omop_patient_risk.cohort_definition REPLACE WHERE cohort_definition_id = {target_cohort_id} {insert_query}")
 
 # COMMAND ----------
 
 # MAGIC %sql
-# MAGIC SELECT * from omop_patient_risk.cohort_definition LIMIT 10 
+# MAGIC SELECT * from amir_omop_patient_risk.cohort_definition LIMIT 10 
 
 # COMMAND ----------
 
@@ -249,18 +249,18 @@ drug_hist_att_id = 2
 # MAGIC     visit_occurrence.visit_end_date
 # MAGIC """
 # MAGIC 
-# MAGIC cnt = sql(f'select count(*) as cnt from omop_patient_risk.cohort where cohort_definition_id = {outcome_cohort_id}').collect()[0]['cnt']
+# MAGIC cnt = sql(f'select count(*) as cnt from amir_omop_patient_risk.cohort where cohort_definition_id = {outcome_cohort_id}').collect()[0]['cnt']
 # MAGIC 
 # MAGIC if cnt==0:
-# MAGIC   sql(f'INSERT INTO omop_patient_risk.cohort {outcome_cohort_query}')
+# MAGIC   sql(f'INSERT INTO amir_omop_patient_risk.cohort {outcome_cohort_query}')
 # MAGIC else:
-# MAGIC   sql(f'INSERT INTO omop_patient_risk.cohort REPLACE WHERE cohort_definition_id = {outcome_cohort_id} {outcome_cohort_query}')
+# MAGIC   sql(f'INSERT INTO amir_omop_patient_risk.cohort REPLACE WHERE cohort_definition_id = {outcome_cohort_id} {outcome_cohort_query}')
 
 # COMMAND ----------
 
 # MAGIC %py
 # MAGIC sql(f"""select * 
-# MAGIC from omop_patient_risk.cohort 
+# MAGIC from amir_omop_patient_risk.cohort 
 # MAGIC where cohort_definition_id ={outcome_cohort_id}
 # MAGIC limit(10)""").display()
 
@@ -268,7 +268,7 @@ drug_hist_att_id = 2
 
 sql(f"""
 select count(*) 
-from omop_patient_risk.cohort 
+from amir_omop_patient_risk.cohort 
 where cohort_definition_id = {outcome_cohort_id}
 limit 10""")
 
@@ -280,16 +280,16 @@ limit 10""")
 # MAGIC persons with at lease once occurance of {outcome_cohort_concept_name}
 # MAGIC """
 # MAGIC insert_query = f"select {outcome_cohort_id}, '{outcome_cohort_concept_name} Cohort', '{outcome_cohort_description}', 1, '{outcome_cohort_query}' , current_date()"
-# MAGIC cnt = sql(f'select count(*) as cnt from omop_patient_risk.cohort_definition where cohort_definition_id = {outcome_cohort_id}').collect()[0]['cnt']
+# MAGIC cnt = sql(f'select count(*) as cnt from amir_omop_patient_risk.cohort_definition where cohort_definition_id = {outcome_cohort_id}').collect()[0]['cnt']
 # MAGIC if cnt==0:
-# MAGIC   sql(f"INSERT INTO omop_patient_risk.cohort_definition {insert_query}")
+# MAGIC   sql(f"INSERT INTO amir_omop_patient_risk.cohort_definition {insert_query}")
 # MAGIC else:
-# MAGIC   sql(f"INSERT OVERWRITE omop_patient_risk.cohort_definition WHERE cohort_id = {outcome_cohort_id} {insert_query}")
+# MAGIC   sql(f"INSERT OVERWRITE amir_omop_patient_risk.cohort_definition WHERE cohort_id = {outcome_cohort_id} {insert_query}")
 
 # COMMAND ----------
 
 # MAGIC %sql
-# MAGIC select * from omop_patient_risk.cohort_definition limit 10
+# MAGIC select * from amir_omop_patient_risk.cohort_definition limit 10
 
 # COMMAND ----------
 
@@ -339,7 +339,7 @@ limit 10""")
 # MAGIC   1 as VALUE_AS_NUMBER,
 # MAGIC   vo.VISIT_CONCEPT_ID as VALUE_AS_CONCEPT_ID
 # MAGIC from
-# MAGIC   omop_patient_risk.cohort tc
+# MAGIC   amir_omop_patient_risk.cohort tc
 # MAGIC   join visit_occurrence vo on tc.subject_id = vo.PERSON_ID
 # MAGIC where
 # MAGIC   tc.cohort_definition_id = {target_cohort_id}
@@ -347,15 +347,15 @@ limit 10""")
 # MAGIC   AND is_valid_time_overlap(tc.cohort_start_date, tc.cohort_start_date, vo.visit_start_date, vo.visit_start_date, {min_time_at_risk}, {max_time_at_risk})
 # MAGIC """
 # MAGIC 
-# MAGIC cnt = sql(f'select count(*) as cnt from omop_patient_risk.COHORT_ATTRIBUTE where cohort_definition_id = {target_cohort_id}').collect()[0]['cnt']
+# MAGIC cnt = sql(f'select count(*) as cnt from amir_omop_patient_risk.COHORT_ATTRIBUTE where cohort_definition_id = {target_cohort_id}').collect()[0]['cnt']
 # MAGIC if cnt==0:
-# MAGIC   sql(f"INSERT INTO omop_patient_risk.COHORT_ATTRIBUTE {insert_query}")
+# MAGIC   sql(f"INSERT INTO amir_omop_patient_risk.COHORT_ATTRIBUTE {insert_query}")
 # MAGIC else:
-# MAGIC   sql(f"INSERT INTO omop_patient_risk.COHORT_ATTRIBUTE WHERE ATTRIBUTE_DEFINITION_ID={outcome_att_id} {insert_query}")
+# MAGIC   sql(f"INSERT INTO amir_omop_patient_risk.COHORT_ATTRIBUTE WHERE ATTRIBUTE_DEFINITION_ID={outcome_att_id} {insert_query}")
 
 # COMMAND ----------
 
-sql(f'select count(*) from omop_patient_risk.COHORT_ATTRIBUTE where ATTRIBUTE_DEFINITION_ID={outcome_att_id}').display()
+sql(f'select count(*) from amir_omop_patient_risk.COHORT_ATTRIBUTE where ATTRIBUTE_DEFINITION_ID={outcome_att_id}').display()
 
 # COMMAND ----------
 
@@ -375,7 +375,7 @@ sql(f'select count(*) from omop_patient_risk.COHORT_ATTRIBUTE where ATTRIBUTE_DE
 # MAGIC   sum(ce.CONDITION_OCCURRENCE_COUNT) as VALUE_AS_NUMBER,
 # MAGIC   ce.CONDITION_CONCEPT_ID as VALUE_AS_CONCEPT_ID
 # MAGIC from
-# MAGIC   omop_patient_risk.cohort tc
+# MAGIC   amir_omop_patient_risk.cohort tc
 # MAGIC   join condition_era ce on tc.subject_id = ce.PERSON_ID
 # MAGIC where
 # MAGIC   tc.cohort_definition_id = {target_cohort_id}
@@ -394,15 +394,15 @@ sql(f'select count(*) from omop_patient_risk.COHORT_ATTRIBUTE where ATTRIBUTE_DE
 # MAGIC   tc.cohort_end_date,
 # MAGIC   ce.CONDITION_CONCEPT_ID
 # MAGIC """
-# MAGIC cnt = sql(f'select count(*) as cnt from omop_patient_risk.COHORT_ATTRIBUTE where cohort_definition_id = {target_cohort_id}').collect()[0]['cnt']
+# MAGIC cnt = sql(f'select count(*) as cnt from amir_omop_patient_risk.COHORT_ATTRIBUTE where cohort_definition_id = {target_cohort_id}').collect()[0]['cnt']
 # MAGIC if cnt==0:
-# MAGIC   sql(f"INSERT INTO omop_patient_risk.COHORT_ATTRIBUTE {insert_query}")
+# MAGIC   sql(f"INSERT INTO amir_omop_patient_risk.COHORT_ATTRIBUTE {insert_query}")
 # MAGIC else:
-# MAGIC   sql(f"INSERT INTO omop_patient_risk.COHORT_ATTRIBUTE REPLACE WHERE ATTRIBUTE_DEFINITION_ID={condition_hist_att_id} {insert_query}")
+# MAGIC   sql(f"INSERT INTO amir_omop_patient_risk.COHORT_ATTRIBUTE REPLACE WHERE ATTRIBUTE_DEFINITION_ID={condition_hist_att_id} {insert_query}")
 
 # COMMAND ----------
 
-sql(f'select count(*) from omop_patient_risk.COHORT_ATTRIBUTE where ATTRIBUTE_DEFINITION_ID={condition_hist_att_id}')
+sql(f'select count(*) from amir_omop_patient_risk.COHORT_ATTRIBUTE where ATTRIBUTE_DEFINITION_ID={condition_hist_att_id}')
 
 
 # COMMAND ----------
@@ -422,7 +422,7 @@ sql(f'select count(*) from omop_patient_risk.COHORT_ATTRIBUTE where ATTRIBUTE_DE
 # MAGIC   sum(de.QUANTITY)+1 as VALUE_AS_NUMBER,
 # MAGIC   de.DRUG_CONCEPT_ID as VALUE_AS_CONCEPT_ID
 # MAGIC from
-# MAGIC   omop_patient_risk.cohort tc
+# MAGIC   amir_omop_patient_risk.cohort tc
 # MAGIC   join drug_exposure de on tc.subject_id = de.PERSON_ID
 # MAGIC where
 # MAGIC   tc.cohort_definition_id = {target_cohort_id}
@@ -443,16 +443,16 @@ sql(f'select count(*) from omop_patient_risk.COHORT_ATTRIBUTE where ATTRIBUTE_DE
 # MAGIC   de.DRUG_CONCEPT_ID
 # MAGIC   """
 # MAGIC 
-# MAGIC cnt = sql(f'select count(*) as cnt from omop_patient_risk.COHORT_ATTRIBUTE where ATTRIBUTE_DEFINITION_ID = {drug_hist_att_id}').collect()[0]['cnt']
+# MAGIC cnt = sql(f'select count(*) as cnt from amir_omop_patient_risk.COHORT_ATTRIBUTE where ATTRIBUTE_DEFINITION_ID = {drug_hist_att_id}').collect()[0]['cnt']
 # MAGIC if cnt==0:
-# MAGIC   sql(f"INSERT INTO omop_patient_risk.COHORT_ATTRIBUTE {insert_query}")
+# MAGIC   sql(f"INSERT INTO amir_omop_patient_risk.COHORT_ATTRIBUTE {insert_query}")
 # MAGIC else:
-# MAGIC   sql(f"INSERT INTO omop_patient_risk.COHORT_ATTRIBUTE REPLACE WHERE ATTRIBUTE_DEFINITION_ID={drug_hist_att_id} {insert_query}")
+# MAGIC   sql(f"INSERT INTO amir_omop_patient_risk.COHORT_ATTRIBUTE REPLACE WHERE ATTRIBUTE_DEFINITION_ID={drug_hist_att_id} {insert_query}")
 
 # COMMAND ----------
 
 # MAGIC %py
-# MAGIC sql(f'select count(*) as cnt from omop_patient_risk.COHORT_ATTRIBUTE where ATTRIBUTE_DEFINITION_ID = {drug_hist_att_id}').display()
+# MAGIC sql(f'select count(*) as cnt from amir_omop_patient_risk.COHORT_ATTRIBUTE where ATTRIBUTE_DEFINITION_ID = {drug_hist_att_id}').display()
 
 # COMMAND ----------
 
@@ -477,11 +477,11 @@ fs = feature_store.FeatureStoreClient()
 # COMMAND ----------
 
 # MAGIC %sql
-# MAGIC SHOW TABLES IN omop_patient_risk
+# MAGIC SHOW TABLES IN amir_omop_patient_risk
 
 # COMMAND ----------
 
-FEATURE_TABLE_NAME = 'omop_patient_risk.drug_features'
+FEATURE_TABLE_NAME = 'amir_omop_patient_risk.drug_features'
 description="drug features"
 
 
@@ -489,7 +489,7 @@ description="drug features"
 
 # DBTITLE 1,add drug features to feature store
 # MAGIC %py
-# MAGIC FEATURE_TABLE_NAME = 'omop_patient_risk.drug_features'
+# MAGIC FEATURE_TABLE_NAME = 'amir_omop_patient_risk.drug_features'
 # MAGIC description="drug features"
 # MAGIC try:
 # MAGIC   fs.drop_table(FEATURE_TABLE_NAME)
@@ -498,7 +498,7 @@ description="drug features"
 # MAGIC   
 # MAGIC drug_features_df = sql(f"""
 # MAGIC     select subject_id, VALUE_AS_CONCEPT_ID as drug_concept_id, VALUE_AS_NUMBER as drug_quantity 
-# MAGIC     from omop_patient_risk.cohort_attribute
+# MAGIC     from amir_omop_patient_risk.cohort_attribute
 # MAGIC     where 
 # MAGIC     ATTRIBUTE_DEFINITION_ID = {drug_hist_att_id} and COHORT_DEFINITION_ID={target_cohort_id}
 # MAGIC     """
@@ -526,7 +526,7 @@ sql(f'SELECT * from {FEATURE_TABLE_NAME} limit 10').display()
 # DBTITLE 1,top n commorbidities
 # MAGIC %py
 # MAGIC sql(f"""
-# MAGIC select VALUE_AS_CONCEPT_ID as condition_concept_id, count(*) as cnt from omop_patient_risk.cohort_attribute where ATTRIBUTE_DEFINITION_ID={condition_hist_att_id} group by 1
+# MAGIC select VALUE_AS_CONCEPT_ID as condition_concept_id, count(*) as cnt from amir_omop_patient_risk.cohort_attribute where ATTRIBUTE_DEFINITION_ID={condition_hist_att_id} group by 1
 # MAGIC order by 2 desc
 # MAGIC limit {max_n_commorbidities}
 # MAGIC """).createOrReplaceTempView('top_comorbidities')
@@ -534,7 +534,7 @@ sql(f'SELECT * from {FEATURE_TABLE_NAME} limit 10').display()
 # COMMAND ----------
 
 # MAGIC %py
-# MAGIC FEATURE_TABLE_NAME = 'omop_patient_risk.condition_history_features'
+# MAGIC FEATURE_TABLE_NAME = 'amir_omop_patient_risk.condition_history_features'
 # MAGIC description="condition history features"
 # MAGIC try:
 # MAGIC   fs.drop_table(FEATURE_TABLE_NAME)
@@ -543,7 +543,7 @@ sql(f'SELECT * from {FEATURE_TABLE_NAME} limit 10').display()
 # MAGIC   
 # MAGIC condition_history_df = sql(f"""
 # MAGIC     select subject_id, VALUE_AS_CONCEPT_ID as condition_concept_id, VALUE_AS_NUMBER as n_condition_occurance 
-# MAGIC     from omop_patient_risk.cohort_attribute
+# MAGIC     from amir_omop_patient_risk.cohort_attribute
 # MAGIC     where 
 # MAGIC     ATTRIBUTE_DEFINITION_ID = {condition_hist_att_id} and COHORT_DEFINITION_ID={target_cohort_id}
 # MAGIC     and
@@ -571,7 +571,7 @@ sql(f'select * from {FEATURE_TABLE_NAME} limit 10').display()
 # COMMAND ----------
 
 # MAGIC %py
-# MAGIC FEATURE_TABLE_NAME = "omop_patient_risk.subject_demographics_features"
+# MAGIC FEATURE_TABLE_NAME = "amir_omop_patient_risk.subject_demographics_features"
 # MAGIC description="demographic features"
 # MAGIC try:
 # MAGIC   fs.drop_table(FEATURE_TABLE_NAME)
@@ -585,7 +585,6 @@ sql(f'select * from {FEATURE_TABLE_NAME} limit 10').display()
 # MAGIC     p.YEAR_OF_BIRTH,
 # MAGIC     date_diff(c.cohort_start_date, p.BIRTH_DATETIME) as age_in_days,
 # MAGIC     p.RACE_CONCEPT_ID,
-# MAGIC     p.ETHNICITY_CONCEPT_ID
 # MAGIC   from cohort c
 # MAGIC   join person p on c.subject_id = p.PERSON_ID
 # MAGIC   where c.cohort_definition_id = {target_cohort_id}
@@ -614,7 +613,7 @@ sql(f'select * from {FEATURE_TABLE_NAME} limit 10').display()
 # COMMAND ----------
 
 # MAGIC %sql
-# MAGIC SHOW TABLES FROM omop_patient_risk
+# MAGIC SHOW TABLES FROM amir_omop_patient_risk
 
 # COMMAND ----------
 
@@ -622,7 +621,7 @@ sql(f'select * from {FEATURE_TABLE_NAME} limit 10').display()
 # MAGIC %py
 # MAGIC outcomes_df = sql(f"""
 # MAGIC     select subject_id, VALUE_AS_CONCEPT_ID as outcome_concept_id, VALUE_AS_NUMBER as visited_emergency 
-# MAGIC     from omop_patient_risk.cohort_attribute
+# MAGIC     from amir_omop_patient_risk.cohort_attribute
 # MAGIC     where 
 # MAGIC     ATTRIBUTE_DEFINITION_ID = {outcome_att_id} and COHORT_DEFINITION_ID={target_cohort_id}
 # MAGIC     """
@@ -633,7 +632,7 @@ sql(f'select * from {FEATURE_TABLE_NAME} limit 10').display()
 # DBTITLE 1,create training data
 # MAGIC %py
 # MAGIC training_df = (
-# MAGIC   sql('select subject_id from omop_patient_risk.cohort')
+# MAGIC   sql('select subject_id from amir_omop_patient_risk.cohort')
 # MAGIC   .filter(f'cohort_definition_id={target_cohort_id}')
 # MAGIC   .join(outcomes_df, how='left',on='subject_id')
 # MAGIC   .selectExpr('subject_id',f"CAST(`{outcome_concept_id}` AS INT) as outcome")
@@ -653,15 +652,15 @@ from databricks.feature_store import FeatureLookup
 
 feature_lookups = [
     FeatureLookup(
-      table_name = 'omop_patient_risk.subject_demographics_features',
+      table_name = 'amir_omop_patient_risk.subject_demographics_features',
       lookup_key = 'subject_id'
     ),
     FeatureLookup(
-      table_name = 'omop_patient_risk.drug_features',
+      table_name = 'amir_omop_patient_risk.drug_features',
       lookup_key = 'subject_id'
     ),
     FeatureLookup(
-      table_name = 'omop_patient_risk.condition_history_features',
+      table_name = 'amir_omop_patient_risk.condition_history_features',
       lookup_key = 'subject_id'
     )
   ]
@@ -681,7 +680,7 @@ training_df.selectExpr('avg(outcome)').display()
 
 # COMMAND ----------
 
-training_df.write.saveAsTable('omop_patient_risk.training_data')
+training_df.write.saveAsTable('amir_omop_patient_risk.training_data')
 
 # COMMAND ----------
 
