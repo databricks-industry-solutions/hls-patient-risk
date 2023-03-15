@@ -606,6 +606,60 @@ sql(f'select * from {FEATURE_TABLE_NAME} limit 10').display()
 # COMMAND ----------
 
 # MAGIC %md
+# MAGIC ### Online Feature Store
+
+# COMMAND ----------
+
+# DBTITLE 1,Dynamically select all relevant columns 
+from functools import reduce
+#dynamically select all columns
+def columns(tablename): 
+  return [str('`' + col.name + '`') for col in spark.table(tablename).schema.fields if col.name != 'subject_id']
+
+tables = ['amir_omop_patient_risk.drug_features', 'amir_omop_patient_risk.condition_history_features', 'amir_omop_patient_risk.subject_demographics_features']
+columns_select = ','.join(list(reduce(lambda a, b: a+b, map(columns, tables)))) #flatmap in python
+print(columns_select)
+
+# COMMAND ----------
+
+# DBTITLE 1,Create Online Feature Store 
+# MAGIC %py
+# MAGIC FEATURE_TABLE_NAME = "amir_omop_patient_risk.subject_features_online"
+# MAGIC description="online patient features"
+# MAGIC 
+# MAGIC try:
+# MAGIC   fs.drop_table(FEATURE_TABLE_NAME)
+# MAGIC except ValueError:
+# MAGIC   pass
+# MAGIC 
+# MAGIC online_subject_fs = sql(f"""
+# MAGIC SELECT tc.subject_id, {columns_select}
+# MAGIC FROM  
+# MAGIC   amir_omop_patient_risk.cohort tc
+# MAGIC LEFT OUTER JOIN amir_omop_patient_risk.drug_features rx
+# MAGIC   on tc.subject_id = rx.subject_id
+# MAGIC LEFT OUTER JOIN amir_omop_patient_risk.condition_history_features cond_hist
+# MAGIC   on cond_hist.subject_id = tc.subject_id
+# MAGIC LEFT OUTER JOIN amir_omop_patient_risk.subject_demographics_features demo
+# MAGIC   on demo.subject_id = tc.subject_id
+# MAGIC WHERE  cohort_definition_id = {target_cohort_id}
+# MAGIC """).fillna(0)
+# MAGIC 
+# MAGIC fs.create_table(
+# MAGIC     name=FEATURE_TABLE_NAME,
+# MAGIC     primary_keys=["subject_id"],
+# MAGIC     df=online_subject_fs,
+# MAGIC     schema=online_subject_fs.schema,
+# MAGIC     description=description
+# MAGIC )
+
+# COMMAND ----------
+
+display(online_subject_fs)
+
+# COMMAND ----------
+
+# MAGIC %md
 # MAGIC ##  3. Training Dataset
 # MAGIC Now that our cohorts are in place, we can create the final dataset. we then use Databricks AutoML to train a model for predicting risk and also understand features impacting patient risk. 
 # MAGIC To make it simpler, first we create a function that decides whether two cohorts overlap:
