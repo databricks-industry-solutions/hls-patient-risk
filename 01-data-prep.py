@@ -584,8 +584,8 @@ sql(f'select * from {FEATURE_TABLE_NAME} limit 10').display()
 # MAGIC     p.GENDER_CONCEPT_ID,
 # MAGIC     p.YEAR_OF_BIRTH,
 # MAGIC     date_diff(c.cohort_start_date, p.BIRTH_DATETIME) as age_in_days,
-# MAGIC     p.RACE_CONCEPT_ID,
-# MAGIC   from cohort c
+# MAGIC     p.RACE_CONCEPT_ID
+# MAGIC   FROM amir_omop_patient_risk.cohort c
 # MAGIC   join person p on c.subject_id = p.PERSON_ID
 # MAGIC   where c.cohort_definition_id = {target_cohort_id}
 # MAGIC   """
