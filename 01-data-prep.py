@@ -4,35 +4,73 @@
 # MAGIC In this notebook we use data already available in OMOP 5.3 to create:
 # MAGIC  1. Target cohort (patinets recently diagnosed with CHF)
 # MAGIC  2. Outcome Cohort (patients adimitted to emergency room)
-# MAGIC  3. Drug exposure hostory features
+# MAGIC  3. Drug exposure history features
 # MAGIC  4. Commorbidity history features
 # MAGIC  5. Demographics features
+# MAGIC 
+# MAGIC  and create a training dataset that will be used for risk prediction.
 
 # COMMAND ----------
 
 # MAGIC %md
-# MAGIC dbutils.widgets.removeAll()
+# MAGIC ## Create the OMOP Schema
+# MAGIC First we create our OMOP schema based on the data available from databircks. This dataset is generated using synthea and our [OMOP solution accelerator](https://d1r5llqwmkrl74.cloudfront.net/notebooks/HLS/1-omop-cdm/index.html#1-omop-cdm_1.html).
+# MAGIC Since we don't need all tables for this excersie, we only load those tables that are needed.
 
 # COMMAND ----------
 
-# MAGIC %sql
-# MAGIC USE patient_risk_altered_OMOP -- todo maybe change 
+data_path ="/home/amir.kermany@databricks.com/omop_export_gz/"
 
 # COMMAND ----------
 
-# MAGIC %sql
-# MAGIC DROP SCHEMA IF EXISTS amir_omop_patient_risk CASCADE
+# DBTITLE 1,list of available datasets
+display(dbutils.fs.ls(data_path))
 
 # COMMAND ----------
 
+# DBTITLE 1,list of tables to load
+tables = ["condition_occurrence","concept","concept_ancestor","observation_period","visit_occurrence","condition_era","drug_exposure","person"]
+
+# COMMAND ----------
+
+# DBTITLE 1,create a new omop schema
+user_name=sql(f"SELECT current_user() as user").collect()[0]['user'].split('@')[0].replace('.','_')
+schema_name = f"OMOP_{user_name}"
+sql(f"DROP SCHEMA IF EXISTS {schema_name} CASCADE")
+sql(f"CREATE SCHEMA IF NOT EXISTS {schema_name}")
+
+# COMMAND ----------
+
+# DBTITLE 1,load tables and add to the schema
+for table_name in tables:
+  spark.read.csv(f"{data_path}{table_name}.csv",header=True,sep="\t", inferSchema=True).write.saveAsTable(f"{schema_name}.{table_name}")
+
+# COMMAND ----------
+
+# DBTITLE 1,list tables
+sql(f"SHOW TABLES in {schema_name}").display()
+
+# COMMAND ----------
+
+sql(f"USE {schema_name}")
+
+# COMMAND ----------
+
+# DBTITLE 1,example data for visit_occurrence
 # MAGIC %sql
-# MAGIC CREATE SCHEMA IF NOT EXISTS amir_omop_patient_risk
+# MAGIC SELECT * FROM visit_occurrence limit 10
+
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC ### Add derived elements
+# MAGIC Now we add `cohort`, `cohort_attributes` and `cohort_definitions` to the scjhema
 
 # COMMAND ----------
 
 # MAGIC %sql
 # MAGIC CREATE
-# MAGIC OR REPLACE TABLE amir_omop_patient_risk.cohort (
+# MAGIC OR REPLACE TABLE cohort (
 # MAGIC   cohort_definition_id LONG,
 # MAGIC   subject_id LONG,
 # MAGIC   cohort_start_date DATE,
@@ -43,7 +81,7 @@
 
 # MAGIC %sql
 # MAGIC CREATE
-# MAGIC OR REPLACE TABLE amir_omop_patient_risk.cohort_definition (
+# MAGIC OR REPLACE TABLE cohort_definition (
 # MAGIC   cohort_definition_id LONG,
 # MAGIC   cohort_definition_name STRING,
 # MAGIC   cohort_definition_description STRING,
@@ -56,7 +94,7 @@
 
 # MAGIC %sql
 # MAGIC CREATE
-# MAGIC OR REPLACE TABLE amir_omop_patient_risk.COHORT_ATTRIBUTE (
+# MAGIC OR REPLACE TABLE COHORT_ATTRIBUTE (
 # MAGIC   COHORT_DEFINITION_ID LONG,
 # MAGIC   SUBJECT_ID LONG,
 # MAGIC   COHORT_START_DATE DATE,
@@ -65,6 +103,12 @@
 # MAGIC   VALUE_AS_NUMBER DOUBLE,
 # MAGIC   VALUE_AS_CONCEPT_ID LONG
 # MAGIC ) USING DELTA;
+
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC ## Experiment parameters
+# MAGIC Now we set up the paramters for the experiment using databricks notebooks widgets utility.
 
 # COMMAND ----------
 
@@ -81,7 +125,7 @@
 # MAGIC CREATE WIDGET text max_time_at_risk DEFAULT "365";
 # MAGIC 
 # MAGIC CREATE WIDGET text cond_history_years DEFAULT "5";
-# MAGIC CREATE WIDGET text max_n_commorbidities DEFAULT "10";
+# MAGIC CREATE WIDGET text max_n_commorbidities DEFAULT "5";
 
 # COMMAND ----------
 
@@ -100,6 +144,7 @@
 
 # COMMAND ----------
 
+# DBTITLE 1,set up ids for cohorts
 target_cohort_id = 1
 outcome_cohort_id = 2
 
@@ -109,6 +154,7 @@ drug_hist_att_id = 2
 
 # COMMAND ----------
 
+# DBTITLE 1,list the concept names
 # MAGIC %py
 # MAGIC input_concepts = sql(f"""
 # MAGIC select concept_id, concept_name from concept 
@@ -119,7 +165,13 @@ drug_hist_att_id = 2
 # COMMAND ----------
 
 # MAGIC %md
-# MAGIC ## Target Cohort
+# MAGIC ## Cohort Selection
+# MAGIC In this section we define main cohorts, namely the target and outcome cohorts.
+
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC ### Target Cohort
 # MAGIC First we define the [target cohort](https://ohdsi.github.io/TheBookOfOhdsi/Cohorts.html), which is determind based on the following criteria:
 # MAGIC 
 # MAGIC Patients who are newly:
@@ -175,18 +227,18 @@ drug_hist_att_id = 2
 # MAGIC     AND earliest_condition_onset.condition_start_date < observation_period.observation_period_end_date
 # MAGIC """
 # MAGIC 
-# MAGIC cnt = sql(f'select count(*) as cnt from amir_omop_patient_risk.cohort').collect()[0]['cnt']
+# MAGIC cnt = sql(f'select count(*) as cnt from cohort').collect()[0]['cnt']
 # MAGIC if cnt==0:
-# MAGIC   sql(f'INSERT INTO amir_omop_patient_risk.cohort {target_cohort_query}')
+# MAGIC   sql(f'INSERT INTO cohort {target_cohort_query}')
 # MAGIC else:
-# MAGIC   sql(f'INSERT INTO amir_omop_patient_risk.cohort REPLACE WHERE cohort_definition_id = {target_cohort_id} {target_cohort_query}')
+# MAGIC   sql(f'INSERT INTO cohort REPLACE WHERE cohort_definition_id = {target_cohort_id} {target_cohort_query}')
 
 # COMMAND ----------
 
 # DBTITLE 1,target cohort
 # MAGIC %py
 # MAGIC sql(f"""select * 
-# MAGIC from amir_omop_patient_risk.cohort 
+# MAGIC from cohort 
 # MAGIC where cohort_definition_id = {target_cohort_id}
 # MAGIC limit 10""").display()
 
@@ -195,7 +247,7 @@ drug_hist_att_id = 2
 # DBTITLE 1,count of subject in target control
 # MAGIC %py
 # MAGIC sql(f"""select count(*) 
-# MAGIC from amir_omop_patient_risk.cohort 
+# MAGIC from cohort 
 # MAGIC where cohort_definition_id = {target_cohort_id}
 # MAGIC """).display()
 
@@ -210,22 +262,22 @@ drug_hist_att_id = 2
 # MAGIC """
 # MAGIC 
 # MAGIC insert_query = f"select {target_cohort_id}, '{target_cohort_concept_name} Cohort', '{target_cohort_description}', 1, '{target_cohort_query}', current_date()"
-# MAGIC cnt = sql(f'select count(*) as cnt from amir_omop_patient_risk.cohort_definition').collect()[0]['cnt']
+# MAGIC cnt = sql(f'select count(*) as cnt from cohort_definition').collect()[0]['cnt']
 # MAGIC 
 # MAGIC if cnt==0:
-# MAGIC   sql(f"INSERT INTO amir_omop_patient_risk.cohort_definition {insert_query}")
+# MAGIC   sql(f"INSERT INTO cohort_definition {insert_query}")
 # MAGIC else:
-# MAGIC   sql(f"INSERT INTO amir_omop_patient_risk.cohort_definition REPLACE WHERE cohort_definition_id = {target_cohort_id} {insert_query}")
+# MAGIC   sql(f"INSERT INTO cohort_definition REPLACE WHERE cohort_definition_id = {target_cohort_id} {insert_query}")
 
 # COMMAND ----------
 
 # MAGIC %sql
-# MAGIC SELECT * from amir_omop_patient_risk.cohort_definition LIMIT 10 
+# MAGIC SELECT * from cohort_definition LIMIT 10 
 
 # COMMAND ----------
 
 # MAGIC %md
-# MAGIC ## Outcome cohort
+# MAGIC ### Outcome cohort
 # MAGIC similary we can create an outcome cohort
 
 # COMMAND ----------
@@ -249,18 +301,18 @@ drug_hist_att_id = 2
 # MAGIC     visit_occurrence.visit_end_date
 # MAGIC """
 # MAGIC 
-# MAGIC cnt = sql(f'select count(*) as cnt from amir_omop_patient_risk.cohort where cohort_definition_id = {outcome_cohort_id}').collect()[0]['cnt']
+# MAGIC cnt = sql(f'select count(*) as cnt from cohort where cohort_definition_id = {outcome_cohort_id}').collect()[0]['cnt']
 # MAGIC 
 # MAGIC if cnt==0:
-# MAGIC   sql(f'INSERT INTO amir_omop_patient_risk.cohort {outcome_cohort_query}')
+# MAGIC   sql(f'INSERT INTO cohort {outcome_cohort_query}')
 # MAGIC else:
-# MAGIC   sql(f'INSERT INTO amir_omop_patient_risk.cohort REPLACE WHERE cohort_definition_id = {outcome_cohort_id} {outcome_cohort_query}')
+# MAGIC   sql(f'INSERT INTO cohort REPLACE WHERE cohort_definition_id = {outcome_cohort_id} {outcome_cohort_query}')
 
 # COMMAND ----------
 
 # MAGIC %py
 # MAGIC sql(f"""select * 
-# MAGIC from amir_omop_patient_risk.cohort 
+# MAGIC from cohort 
 # MAGIC where cohort_definition_id ={outcome_cohort_id}
 # MAGIC limit(10)""").display()
 
@@ -268,9 +320,8 @@ drug_hist_att_id = 2
 
 sql(f"""
 select count(*) 
-from amir_omop_patient_risk.cohort 
-where cohort_definition_id = {outcome_cohort_id}
-limit 10""")
+from cohort 
+where cohort_definition_id = {outcome_cohort_id}""").display()
 
 # COMMAND ----------
 
@@ -280,22 +331,22 @@ limit 10""")
 # MAGIC persons with at lease once occurance of {outcome_cohort_concept_name}
 # MAGIC """
 # MAGIC insert_query = f"select {outcome_cohort_id}, '{outcome_cohort_concept_name} Cohort', '{outcome_cohort_description}', 1, '{outcome_cohort_query}' , current_date()"
-# MAGIC cnt = sql(f'select count(*) as cnt from amir_omop_patient_risk.cohort_definition where cohort_definition_id = {outcome_cohort_id}').collect()[0]['cnt']
+# MAGIC cnt = sql(f'select count(*) as cnt from cohort_definition where cohort_definition_id = {outcome_cohort_id}').collect()[0]['cnt']
 # MAGIC if cnt==0:
-# MAGIC   sql(f"INSERT INTO amir_omop_patient_risk.cohort_definition {insert_query}")
+# MAGIC   sql(f"INSERT INTO cohort_definition {insert_query}")
 # MAGIC else:
-# MAGIC   sql(f"INSERT OVERWRITE amir_omop_patient_risk.cohort_definition WHERE cohort_id = {outcome_cohort_id} {insert_query}")
+# MAGIC   sql(f"INSERT OVERWRITE cohort_definition WHERE cohort_id = {outcome_cohort_id} {insert_query}")
 
 # COMMAND ----------
 
 # MAGIC %sql
-# MAGIC select * from amir_omop_patient_risk.cohort_definition limit 10
+# MAGIC select * from cohort_definition limit 10  
 
 # COMMAND ----------
 
 # MAGIC %md
 # MAGIC ## Patient Cohort Attributes
-# MAGIC TODO: Add description and link to OMOP docs
+# MAGIC Now that we have our cohorts in place, we add data to the [cohort_attributes](https://www.ohdsi.org/web/wiki/doku.php?id=documentation:cdm:cohort_attribute) table, these attributes are selected based on the downstream analysis for this excersise, which is creating a feature store for risk prediction. 
 
 # COMMAND ----------
 
@@ -324,6 +375,7 @@ limit 10""")
 
 # MAGIC %md
 # MAGIC ### Outcome Attribute
+# MAGIC First, we add the outcome attributes for patinets in the target cohort, this is where we determine which of the pateints withing the cohort, have expereinced the outcome in question within the timeframe of interest. 
 
 # COMMAND ----------
 
@@ -339,7 +391,7 @@ limit 10""")
 # MAGIC   1 as VALUE_AS_NUMBER,
 # MAGIC   vo.VISIT_CONCEPT_ID as VALUE_AS_CONCEPT_ID
 # MAGIC from
-# MAGIC   amir_omop_patient_risk.cohort tc
+# MAGIC   cohort tc
 # MAGIC   join visit_occurrence vo on tc.subject_id = vo.PERSON_ID
 # MAGIC where
 # MAGIC   tc.cohort_definition_id = {target_cohort_id}
@@ -347,20 +399,25 @@ limit 10""")
 # MAGIC   AND is_valid_time_overlap(tc.cohort_start_date, tc.cohort_start_date, vo.visit_start_date, vo.visit_start_date, {min_time_at_risk}, {max_time_at_risk})
 # MAGIC """
 # MAGIC 
-# MAGIC cnt = sql(f'select count(*) as cnt from amir_omop_patient_risk.COHORT_ATTRIBUTE where cohort_definition_id = {target_cohort_id}').collect()[0]['cnt']
+# MAGIC cnt = sql(f'select count(*) as cnt from COHORT_ATTRIBUTE where cohort_definition_id = {target_cohort_id}').collect()[0]['cnt']
 # MAGIC if cnt==0:
-# MAGIC   sql(f"INSERT INTO amir_omop_patient_risk.COHORT_ATTRIBUTE {insert_query}")
+# MAGIC   sql(f"INSERT INTO COHORT_ATTRIBUTE {insert_query}")
 # MAGIC else:
-# MAGIC   sql(f"INSERT INTO amir_omop_patient_risk.COHORT_ATTRIBUTE WHERE ATTRIBUTE_DEFINITION_ID={outcome_att_id} {insert_query}")
+# MAGIC   sql(f"INSERT INTO COHORT_ATTRIBUTE WHERE ATTRIBUTE_DEFINITION_ID={outcome_att_id} {insert_query}")
 
 # COMMAND ----------
 
-sql(f'select count(*) from amir_omop_patient_risk.COHORT_ATTRIBUTE where ATTRIBUTE_DEFINITION_ID={outcome_att_id}').display()
+sql(f'select * from COHORT_ATTRIBUTE where ATTRIBUTE_DEFINITION_ID={outcome_att_id}').display()
+
+# COMMAND ----------
+
+sql(f'select count(*) from COHORT_ATTRIBUTE where ATTRIBUTE_DEFINITION_ID={outcome_att_id}').display()
 
 # COMMAND ----------
 
 # MAGIC %md
 # MAGIC ### Condition History
+# MAGIC Now we add condition history attributes, corresponding to the top `n` comorbidities found among the target cohort members. Note that a cohrot member is considered to have the given attribute if she has been diagnosed with the condition within the observation period. 
 
 # COMMAND ----------
 
@@ -375,7 +432,7 @@ sql(f'select count(*) from amir_omop_patient_risk.COHORT_ATTRIBUTE where ATTRIBU
 # MAGIC   sum(ce.CONDITION_OCCURRENCE_COUNT) as VALUE_AS_NUMBER,
 # MAGIC   ce.CONDITION_CONCEPT_ID as VALUE_AS_CONCEPT_ID
 # MAGIC from
-# MAGIC   amir_omop_patient_risk.cohort tc
+# MAGIC   cohort tc
 # MAGIC   join condition_era ce on tc.subject_id = ce.PERSON_ID
 # MAGIC where
 # MAGIC   tc.cohort_definition_id = {target_cohort_id}
@@ -394,21 +451,27 @@ sql(f'select count(*) from amir_omop_patient_risk.COHORT_ATTRIBUTE where ATTRIBU
 # MAGIC   tc.cohort_end_date,
 # MAGIC   ce.CONDITION_CONCEPT_ID
 # MAGIC """
-# MAGIC cnt = sql(f'select count(*) as cnt from amir_omop_patient_risk.COHORT_ATTRIBUTE where cohort_definition_id = {target_cohort_id}').collect()[0]['cnt']
+# MAGIC cnt = sql(f'select count(*) as cnt from COHORT_ATTRIBUTE where cohort_definition_id = {target_cohort_id}').collect()[0]['cnt']
 # MAGIC if cnt==0:
-# MAGIC   sql(f"INSERT INTO amir_omop_patient_risk.COHORT_ATTRIBUTE {insert_query}")
+# MAGIC   sql(f"INSERT INTO COHORT_ATTRIBUTE {insert_query}")
 # MAGIC else:
-# MAGIC   sql(f"INSERT INTO amir_omop_patient_risk.COHORT_ATTRIBUTE REPLACE WHERE ATTRIBUTE_DEFINITION_ID={condition_hist_att_id} {insert_query}")
+# MAGIC   sql(f"INSERT INTO COHORT_ATTRIBUTE REPLACE WHERE ATTRIBUTE_DEFINITION_ID={condition_hist_att_id} {insert_query}")
 
 # COMMAND ----------
 
-sql(f'select count(*) from amir_omop_patient_risk.COHORT_ATTRIBUTE where ATTRIBUTE_DEFINITION_ID={condition_hist_att_id}')
+sql(f'select count(*) from COHORT_ATTRIBUTE where ATTRIBUTE_DEFINITION_ID={condition_hist_att_id}').display()
+
+
+# COMMAND ----------
+
+sql(f'select * from COHORT_ATTRIBUTE where ATTRIBUTE_DEFINITION_ID={condition_hist_att_id}').display()
 
 
 # COMMAND ----------
 
 # MAGIC %md
 # MAGIC ### Drug Exposure History
+# MAGIC Similar to the condition history, we add the drug exposure history:
 
 # COMMAND ----------
 
@@ -422,7 +485,7 @@ sql(f'select count(*) from amir_omop_patient_risk.COHORT_ATTRIBUTE where ATTRIBU
 # MAGIC   sum(de.QUANTITY)+1 as VALUE_AS_NUMBER,
 # MAGIC   de.DRUG_CONCEPT_ID as VALUE_AS_CONCEPT_ID
 # MAGIC from
-# MAGIC   amir_omop_patient_risk.cohort tc
+# MAGIC   cohort tc
 # MAGIC   join drug_exposure de on tc.subject_id = de.PERSON_ID
 # MAGIC where
 # MAGIC   tc.cohort_definition_id = {target_cohort_id}
@@ -443,22 +506,23 @@ sql(f'select count(*) from amir_omop_patient_risk.COHORT_ATTRIBUTE where ATTRIBU
 # MAGIC   de.DRUG_CONCEPT_ID
 # MAGIC   """
 # MAGIC 
-# MAGIC cnt = sql(f'select count(*) as cnt from amir_omop_patient_risk.COHORT_ATTRIBUTE where ATTRIBUTE_DEFINITION_ID = {drug_hist_att_id}').collect()[0]['cnt']
+# MAGIC cnt = sql(f'select count(*) as cnt from COHORT_ATTRIBUTE where ATTRIBUTE_DEFINITION_ID = {drug_hist_att_id}').collect()[0]['cnt']
 # MAGIC if cnt==0:
-# MAGIC   sql(f"INSERT INTO amir_omop_patient_risk.COHORT_ATTRIBUTE {insert_query}")
+# MAGIC   sql(f"INSERT INTO COHORT_ATTRIBUTE {insert_query}")
 # MAGIC else:
-# MAGIC   sql(f"INSERT INTO amir_omop_patient_risk.COHORT_ATTRIBUTE REPLACE WHERE ATTRIBUTE_DEFINITION_ID={drug_hist_att_id} {insert_query}")
+# MAGIC   sql(f"INSERT INTO COHORT_ATTRIBUTE REPLACE WHERE ATTRIBUTE_DEFINITION_ID={drug_hist_att_id} {insert_query}")
 
 # COMMAND ----------
 
 # MAGIC %py
-# MAGIC sql(f'select count(*) as cnt from amir_omop_patient_risk.COHORT_ATTRIBUTE where ATTRIBUTE_DEFINITION_ID = {drug_hist_att_id}').display()
+# MAGIC sql(f'select count(*) as cnt from COHORT_ATTRIBUTE where ATTRIBUTE_DEFINITION_ID = {drug_hist_att_id}').display()
 
 # COMMAND ----------
 
 # MAGIC %md
 # MAGIC ## Add features
-# MAGIC TODO: add description for feature store
+# MAGIC So far, we have leveraged OMOP's default schemas to store attributes associated to the target cohort that can be used for training our model. 
+# MAGIC We now, leverage [databricks feature store](https://docs.databricks.com/machine-learning/feature-store/index.html) to create an offline feature store to store features that can be used (and re-used) for training our classifier.
 
 # COMMAND ----------
 
@@ -476,21 +540,26 @@ fs = feature_store.FeatureStoreClient()
 
 # COMMAND ----------
 
-# MAGIC %sql
-# MAGIC SHOW TABLES IN amir_omop_patient_risk
+sql(f"SHOW TABLES IN {schema_name}").display()
 
 # COMMAND ----------
 
-FEATURE_TABLE_NAME = 'amir_omop_patient_risk.drug_features'
-description="drug features"
+# MAGIC %md
+# MAGIC We create a new shema to hold the features as well as the training dataset for this analysis.
 
+# COMMAND ----------
+
+feature_schema = schema_name + '_features'
+sql(f"DROP SCHEMA IF EXISTS {feature_schema} CASCADE")
+sql(f"CREATE SCHEMA IF NOT EXISTS {feature_schema}")
 
 # COMMAND ----------
 
 # DBTITLE 1,add drug features to feature store
 # MAGIC %py
-# MAGIC FEATURE_TABLE_NAME = 'amir_omop_patient_risk.drug_features'
-# MAGIC description="drug features"
+# MAGIC FEATURE_TABLE_NAME = f'{feature_schema}.drug_features'
+# MAGIC description=f"drug features for drugs {drug1_concept_id} and {drug2_concept_id}"
+# MAGIC 
 # MAGIC try:
 # MAGIC   fs.drop_table(FEATURE_TABLE_NAME)
 # MAGIC except ValueError:
@@ -498,7 +567,7 @@ description="drug features"
 # MAGIC   
 # MAGIC drug_features_df = sql(f"""
 # MAGIC     select subject_id, VALUE_AS_CONCEPT_ID as drug_concept_id, VALUE_AS_NUMBER as drug_quantity 
-# MAGIC     from amir_omop_patient_risk.cohort_attribute
+# MAGIC     from cohort_attribute
 # MAGIC     where 
 # MAGIC     ATTRIBUTE_DEFINITION_ID = {drug_hist_att_id} and COHORT_DEFINITION_ID={target_cohort_id}
 # MAGIC     """
@@ -526,7 +595,7 @@ sql(f'SELECT * from {FEATURE_TABLE_NAME} limit 10').display()
 # DBTITLE 1,top n commorbidities
 # MAGIC %py
 # MAGIC sql(f"""
-# MAGIC select VALUE_AS_CONCEPT_ID as condition_concept_id, count(*) as cnt from amir_omop_patient_risk.cohort_attribute where ATTRIBUTE_DEFINITION_ID={condition_hist_att_id} group by 1
+# MAGIC select VALUE_AS_CONCEPT_ID as condition_concept_id, count(*) as cnt from cohort_attribute where ATTRIBUTE_DEFINITION_ID={condition_hist_att_id} group by 1
 # MAGIC order by 2 desc
 # MAGIC limit {max_n_commorbidities}
 # MAGIC """).createOrReplaceTempView('top_comorbidities')
@@ -534,8 +603,8 @@ sql(f'SELECT * from {FEATURE_TABLE_NAME} limit 10').display()
 # COMMAND ----------
 
 # MAGIC %py
-# MAGIC FEATURE_TABLE_NAME = 'amir_omop_patient_risk.condition_history_features'
-# MAGIC description="condition history features"
+# MAGIC FEATURE_TABLE_NAME = f'{feature_schema}.condition_history_features'
+# MAGIC description=f"condition history features for top {max_n_commorbidities} commorbidities"
 # MAGIC try:
 # MAGIC   fs.drop_table(FEATURE_TABLE_NAME)
 # MAGIC except ValueError:
@@ -543,7 +612,7 @@ sql(f'SELECT * from {FEATURE_TABLE_NAME} limit 10').display()
 # MAGIC   
 # MAGIC condition_history_df = sql(f"""
 # MAGIC     select subject_id, VALUE_AS_CONCEPT_ID as condition_concept_id, VALUE_AS_NUMBER as n_condition_occurance 
-# MAGIC     from amir_omop_patient_risk.cohort_attribute
+# MAGIC     from cohort_attribute
 # MAGIC     where 
 # MAGIC     ATTRIBUTE_DEFINITION_ID = {condition_hist_att_id} and COHORT_DEFINITION_ID={target_cohort_id}
 # MAGIC     and
@@ -571,7 +640,7 @@ sql(f'select * from {FEATURE_TABLE_NAME} limit 10').display()
 # COMMAND ----------
 
 # MAGIC %py
-# MAGIC FEATURE_TABLE_NAME = "amir_omop_patient_risk.subject_demographics_features"
+# MAGIC FEATURE_TABLE_NAME = f"{feature_schema}.subject_demographics_features"
 # MAGIC description="demographic features"
 # MAGIC try:
 # MAGIC   fs.drop_table(FEATURE_TABLE_NAME)
@@ -585,7 +654,7 @@ sql(f'select * from {FEATURE_TABLE_NAME} limit 10').display()
 # MAGIC     p.YEAR_OF_BIRTH,
 # MAGIC     date_diff(c.cohort_start_date, p.BIRTH_DATETIME) as age_in_days,
 # MAGIC     p.RACE_CONCEPT_ID
-# MAGIC   FROM amir_omop_patient_risk.cohort c
+# MAGIC   FROM cohort c
 # MAGIC   join person p on c.subject_id = p.PERSON_ID
 # MAGIC   where c.cohort_definition_id = {target_cohort_id}
 # MAGIC   """
@@ -606,68 +675,13 @@ sql(f'select * from {FEATURE_TABLE_NAME} limit 10').display()
 # COMMAND ----------
 
 # MAGIC %md
-# MAGIC ### Online Feature Store
-
-# COMMAND ----------
-
-# DBTITLE 1,Dynamically select all relevant columns 
-from functools import reduce
-#dynamically select all columns
-def columns(tablename): 
-  return [str('`' + col.name + '`') for col in spark.table(tablename).schema.fields if col.name != 'subject_id']
-
-tables = ['amir_omop_patient_risk.drug_features', 'amir_omop_patient_risk.condition_history_features', 'amir_omop_patient_risk.subject_demographics_features']
-columns_select = ','.join(list(reduce(lambda a, b: a+b, map(columns, tables)))) #flatmap in python
-print(columns_select)
-
-# COMMAND ----------
-
-# DBTITLE 1,Create Online Feature Store 
-# MAGIC %py
-# MAGIC FEATURE_TABLE_NAME = "amir_omop_patient_risk.subject_features_online"
-# MAGIC description="online patient features"
-# MAGIC 
-# MAGIC try:
-# MAGIC   fs.drop_table(FEATURE_TABLE_NAME)
-# MAGIC except ValueError:
-# MAGIC   pass
-# MAGIC 
-# MAGIC online_subject_fs = sql(f"""
-# MAGIC SELECT tc.subject_id, {columns_select}
-# MAGIC FROM  
-# MAGIC   amir_omop_patient_risk.cohort tc
-# MAGIC LEFT OUTER JOIN amir_omop_patient_risk.drug_features rx
-# MAGIC   on tc.subject_id = rx.subject_id
-# MAGIC LEFT OUTER JOIN amir_omop_patient_risk.condition_history_features cond_hist
-# MAGIC   on cond_hist.subject_id = tc.subject_id
-# MAGIC LEFT OUTER JOIN amir_omop_patient_risk.subject_demographics_features demo
-# MAGIC   on demo.subject_id = tc.subject_id
-# MAGIC WHERE  cohort_definition_id = {target_cohort_id}
-# MAGIC """).fillna(0)
-# MAGIC 
-# MAGIC fs.create_table(
-# MAGIC     name=FEATURE_TABLE_NAME,
-# MAGIC     primary_keys=["subject_id"],
-# MAGIC     df=online_subject_fs,
-# MAGIC     schema=online_subject_fs.schema,
-# MAGIC     description=description
-# MAGIC )
-
-# COMMAND ----------
-
-display(online_subject_fs)
-
-# COMMAND ----------
-
-# MAGIC %md
-# MAGIC ##  3. Training Dataset
+# MAGIC ## Create Training Dataset
 # MAGIC Now that our cohorts are in place, we can create the final dataset. we then use Databricks AutoML to train a model for predicting risk and also understand features impacting patient risk. 
 # MAGIC To make it simpler, first we create a function that decides whether two cohorts overlap:
 
 # COMMAND ----------
 
-# MAGIC %sql
-# MAGIC SHOW TABLES FROM amir_omop_patient_risk
+sql(f"SHOW TABLES IN {feature_schema}").display()
 
 # COMMAND ----------
 
@@ -675,7 +689,7 @@ display(online_subject_fs)
 # MAGIC %py
 # MAGIC outcomes_df = sql(f"""
 # MAGIC     select subject_id, VALUE_AS_CONCEPT_ID as outcome_concept_id, VALUE_AS_NUMBER as visited_emergency 
-# MAGIC     from amir_omop_patient_risk.cohort_attribute
+# MAGIC     from cohort_attribute
 # MAGIC     where 
 # MAGIC     ATTRIBUTE_DEFINITION_ID = {outcome_att_id} and COHORT_DEFINITION_ID={target_cohort_id}
 # MAGIC     """
@@ -686,7 +700,7 @@ display(online_subject_fs)
 # DBTITLE 1,create training data
 # MAGIC %py
 # MAGIC training_df = (
-# MAGIC   sql('select subject_id from amir_omop_patient_risk.cohort')
+# MAGIC   sql('select subject_id from cohort')
 # MAGIC   .filter(f'cohort_definition_id={target_cohort_id}')
 # MAGIC   .join(outcomes_df, how='left',on='subject_id')
 # MAGIC   .selectExpr('subject_id',f"CAST(`{outcome_concept_id}` AS INT) as outcome")
@@ -695,26 +709,20 @@ display(online_subject_fs)
 
 # COMMAND ----------
 
-# DBTITLE 1,proportion of patients with the outcome
-training_df.selectExpr('avg(outcome)').display()
-
-# COMMAND ----------
-
 # DBTITLE 1,add features to the training dataset
 from databricks.feature_store import FeatureLookup
 
-
 feature_lookups = [
     FeatureLookup(
-      table_name = 'amir_omop_patient_risk.subject_demographics_features',
+      table_name = f'{feature_schema}.subject_demographics_features',
       lookup_key = 'subject_id'
     ),
     FeatureLookup(
-      table_name = 'amir_omop_patient_risk.drug_features',
+      table_name = f'{feature_schema}.drug_features',
       lookup_key = 'subject_id'
     ),
     FeatureLookup(
-      table_name = 'amir_omop_patient_risk.condition_history_features',
+      table_name = f'{feature_schema}.condition_history_features',
       lookup_key = 'subject_id'
     )
   ]
@@ -730,79 +738,26 @@ training_df = training_set.load_df().fillna(0)
 
 # COMMAND ----------
 
+# DBTITLE 1,proportion of patients with the outcome
 training_df.selectExpr('avg(outcome)').display()
 
 # COMMAND ----------
 
-training_df.write.saveAsTable('amir_omop_patient_risk.training_data')
+# DBTITLE 1,store the dataset
+training_df.write.saveAsTable(f'{feature_schema}.training_data')
 
 # COMMAND ----------
 
 # MAGIC %md
-# MAGIC ```
-# MAGIC with drugs as(
-# MAGIC SELECT
+# MAGIC ## Model Tarining
+# MAGIC Now that we have the training data ready, we will proceed to use databricks [AutoML]() to train a binary classifier that predicts the outcome (emergency room visit status) based on the selected features that we have stored in the feature store.
+# MAGIC the next notebook ([02-automl-best-model]($./02-automl-best-model)) is an example notebook generated by AutoML based on the dataset prepard in this step.
 # MAGIC 
-# MAGIC                 C.concept_id Drug_concept_id,
 # MAGIC 
-# MAGIC                 C.concept_name Drug_concept_name,
-# MAGIC 
-# MAGIC                 C.concept_code Drug_concept_code,
-# MAGIC 
-# MAGIC                 C.concept_class_id Drug_concept_class,
-# MAGIC 
-# MAGIC                 C.standard_concept Drug_concept_level,
-# MAGIC 
-# MAGIC                 C.vocabulary_id Drug_concept_vocab_id,
-# MAGIC 
-# MAGIC                 V.vocabulary_name Drug_concept_vocab_code,
-# MAGIC 
-# MAGIC                ( CASE C.vocabulary_id
-# MAGIC 
-# MAGIC                         WHEN 'RxNorm' THEN
-# MAGIC 
-# MAGIC                                 CASE lower(C.concept_class_id)
-# MAGIC 
-# MAGIC                                 WHEN 'clinical drug' THEN 'Yes'
-# MAGIC 
-# MAGIC                                 WHEN 'branded drug' THEN 'Yes'
-# MAGIC 
-# MAGIC                                 WHEN 'ingredient' THEN 'Yes'
-# MAGIC 
-# MAGIC                                 WHEN 'branded pack' THEN 'Yes'
-# MAGIC 
-# MAGIC                                 WHEN 'clinical pack' THEN 'Yes'
-# MAGIC 
-# MAGIC                                 ELSE 'No' END
-# MAGIC 
-# MAGIC                         ELSE 'No' END) Is_Drug_Concept_flag
-# MAGIC 
-# MAGIC                 -- (CASE C.domain_id WHEN 'Drug' THEN 'Yes' ELSE 'No' END) Is_Drug_Concept_flag
-# MAGIC 
-# MAGIC         FROM
-# MAGIC 
-# MAGIC                 concept C,
-# MAGIC 
-# MAGIC                 vocabulary V
-# MAGIC 
-# MAGIC         WHERE
-# MAGIC 
-# MAGIC                 C.vocabulary_id = V.vocabulary_id
-# MAGIC                 )
-# MAGIC select * from drugs
-# MAGIC where drug_concept_id in (SELECT distinct(drug_concept_id) FROM drug_exposure)
-# MAGIC ```
+# MAGIC <img src='https://hls-eng-data-public.s3.amazonaws.com/img/patient_risk_automl.gif'>
 
 # COMMAND ----------
 
 # MAGIC %md
-# MAGIC Copyright / License info of the notebook. Copyright Databricks, Inc. [2021].  The source in this notebook is provided subject to the [Databricks License](https://databricks.com/db-license-source).  All included or referenced third party libraries are subject to the licenses set forth below.
-# MAGIC 
-# MAGIC |Library Name|Library License|Library License URL|Library Source URL| 
-# MAGIC | :-: | :-:| :-: | :-:|
-# MAGIC |Smolder |Apache-2.0 License| https://github.com/databrickslabs/smolder | https://github.com/databrickslabs/smolder/blob/master/LICENSE|
-# MAGIC |Synthea|Apache License 2.0|https://github.com/synthetichealth/synthea/blob/master/LICENSE| https://github.com/synthetichealth/synthea|
-# MAGIC | OHDSI/CommonDataModel| Apache License 2.0 | https://github.com/OHDSI/CommonDataModel/blob/master/LICENSE | https://github.com/OHDSI/CommonDataModel |
-# MAGIC | OHDSI/ETL-Synthea| Apache License 2.0 | https://github.com/OHDSI/ETL-Synthea/blob/master/LICENSE | https://github.com/OHDSI/ETL-Synthea |
-# MAGIC |OHDSI/OMOP-Queries|||https://github.com/OHDSI/OMOP-Queries|
-# MAGIC |The Book of OHDSI | Creative Commons Zero v1.0 Universal license.|https://ohdsi.github.io/TheBookOfOhdsi/index.html#license|https://ohdsi.github.io/TheBookOfOhdsi/|
+# MAGIC ## 📝 Note
+# MAGIC As you can see in the autogenerated notebook, the accuracy of the model is very low. The primary reason for this is the fact that in the synthetically generated data, the emergency room visits are completely uncorrelated with CHF status or a patients disease history. However, we manually alterred the data to induce correlation between ethnicty and drug exposure history. This can be validated by the SHAP values generated in `Cmd 28` of the notebook. This is also reflected in the correlation matrix in [03-autoML-data-exploration]($./03-autoML-data-exploration) notebook. Also, note that most of the selected features have a very high skew (mostly zero).
