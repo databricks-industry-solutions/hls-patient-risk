@@ -1,4 +1,8 @@
 # Databricks notebook source
+# MAGIC %md This solution accelerator notebook is also available at https://github.com/databricks-industry-solutions/hls-patient-risk
+
+# COMMAND ----------
+
 # MAGIC %md
 # MAGIC # Patient Level Risk Prediction: Cohorts and Features
 # MAGIC In this notebook we use data already available in OMOP 5.3 to create:
@@ -20,6 +24,7 @@
 # COMMAND ----------
 
 data_path ="/home/amir.kermany@databricks.com/omop_export_gz/"
+
 
 # COMMAND ----------
 
@@ -127,20 +132,26 @@ sql(f"USE {schema_name}")
 # MAGIC CREATE WIDGET text cond_history_years DEFAULT "5";
 # MAGIC CREATE WIDGET text max_n_commorbidities DEFAULT "5";
 
+
 # COMMAND ----------
 
 # MAGIC %py
-# MAGIC drug1_concept_id = dbutils.widgets.get('drug1_concept_id')
-# MAGIC drug2_concept_id = dbutils.widgets.get('drug2_concept_id')
+# MAGIC dbutils.widgets.text('outcome_concept_id', '9203')   #Emergency Room Visit
 # MAGIC outcome_concept_id = dbutils.widgets.get('outcome_concept_id')
+# MAGIC dbutils.widgets.text('target_condition_concept_id', '4229440') #CHF
+# MAGIC target_condition_concept_id = dbutils.widgets.get('target_condition_concept_id')
+# MAGIC 
+# MAGIC dbutils.widgets.text('drug1_concept_id', '40163554') #Warfarin
+# MAGIC drug1_concept_id = dbutils.widgets.get('drug1_concept_id')
+# MAGIC dbutils.widgets.text('drug2_concept_id', '40221901') #Acetaminophen
+# MAGIC drug2_concept_id = dbutils.widgets.get('drug2_concept_id')
+# MAGIC dbutils.widgets.text('min_observation_period', '1095') #whashout period in days
 # MAGIC min_observation_period = dbutils.widgets.get('min_observation_period')
 # MAGIC 
+# MAGIC dbutils.widgets.text('min_time_at_risk', '7')
 # MAGIC min_time_at_risk = dbutils.widgets.get('min_time_at_risk')
-# MAGIC max_time_at_risk= dbutils.widgets.get('max_time_at_risk')
-# MAGIC cond_history_years= dbutils.widgets.get('cond_history_years')
-# MAGIC max_n_commorbidities= dbutils.widgets.get('max_n_commorbidities')
-# MAGIC 
-# MAGIC target_condition_concept_id = dbutils.widgets.get('target_condition_concept_id')
+# MAGIC dbutils.widgets.text('max_time_at_risk', '365')
+# MAGIC max_time_at_risk = dbutils.widgets.get('max_time_at_risk')
 
 # COMMAND ----------
 
@@ -172,6 +183,7 @@ drug_hist_att_id = 2
 
 # MAGIC %md
 # MAGIC ### Target Cohort
+
 # MAGIC First we define the [target cohort](https://ohdsi.github.io/TheBookOfOhdsi/Cohorts.html), which is determind based on the following criteria:
 # MAGIC 
 # MAGIC Patients who are newly:
@@ -184,9 +196,10 @@ drug_hist_att_id = 2
 # COMMAND ----------
 
 # DBTITLE 1,Create condition cohort
-# MAGIC %sql
-# MAGIC CREATE
-# MAGIC OR REPLACE TEMP VIEW earliest_condition_onset AS (
+# MAGIC %py
+# MAGIC sql(f"""DROP TABLE IF EXISTS earliest_condition_onset;""")
+# MAGIC sql(f"""
+# MAGIC CREATE TABLE earliest_condition_onset AS (
 # MAGIC   SELECT
 # MAGIC     person_id,
 # MAGIC     min(condition_start_date) as condition_start_date
@@ -198,33 +211,35 @@ drug_hist_att_id = 2
 # MAGIC       FROM
 # MAGIC         concept_ancestor
 # MAGIC       WHERE
-# MAGIC         ancestor_concept_id = ${target_condition_concept_id}
+# MAGIC         ancestor_concept_id = '{target_condition_concept_id}'
 # MAGIC     )
 # MAGIC   GROUP BY
 # MAGIC     person_id
 # MAGIC );
-# MAGIC SELECT
-# MAGIC   count(*)
-# MAGIC from
-# MAGIC   earliest_condition_onset
+# MAGIC """)
+# MAGIC display(sql("""SELECT count(*) from earliest_condition_onset"""))
 
 # COMMAND ----------
 
 # DBTITLE 1,create target Cohort
 # MAGIC %py
+# MAGIC #Minimum of 3 years prior observation
+# MAGIC #Minimum of 1 year available after observation
+# MAGIC #Patients who have CHF
 # MAGIC target_cohort_query =  f"""
 # MAGIC SELECT
 # MAGIC     {target_cohort_id} as cohort_definition_id,
 # MAGIC     earliest_condition_onset.person_id AS subject_id,
-# MAGIC     earliest_condition_onset.condition_start_date AS cohort_start_date,
-# MAGIC     observation_period.observation_period_end_date AS cohort_end_date
+# MAGIC     DATE_ADD(earliest_condition_onset.condition_start_date, ( -1 * {min_observation_period} ) )  AS cohort_start_date,
+# MAGIC     earliest_condition_onset.condition_start_date AS cohort_end_date
 # MAGIC   from
 # MAGIC     earliest_condition_onset
-# MAGIC     INNER JOIN observation_period ON earliest_condition_onset.person_id = observation_period.person_id
+# MAGIC     INNER JOIN (SELECT person_id, min(visit_start_date) as observation_period_start_date, max(visit_start_date) as observation_period_end_date  FROM visit_occurrence GROUP BY person_id) observation_period 
+# MAGIC       ON earliest_condition_onset.person_id = observation_period.person_id
 # MAGIC     AND earliest_condition_onset.condition_start_date > date_add(
-# MAGIC       observation_period.observation_period_start_date, {min_observation_period}
+# MAGIC       observation_period.observation_period_start_date, ( -1 * {min_observation_period} )
 # MAGIC     )
-# MAGIC     AND earliest_condition_onset.condition_start_date < observation_period.observation_period_end_date
+# MAGIC     AND date_add(earliest_condition_onset.condition_start_date, {max_time_at_risk} ) < observation_period.observation_period_end_date
 # MAGIC """
 # MAGIC 
 # MAGIC cnt = sql(f'select count(*) as cnt from cohort').collect()[0]['cnt']
@@ -280,25 +295,32 @@ drug_hist_att_id = 2
 # MAGIC ### Outcome cohort
 # MAGIC similary we can create an outcome cohort
 
+
 # COMMAND ----------
 
 # MAGIC %py
 # MAGIC sql(f'SET outcome_cohort_id = {outcome_cohort_id}')
 # MAGIC 
+# MAGIC 
 # MAGIC outcome_cohort_query =  f"""
 # MAGIC   SELECT
 # MAGIC     {outcome_cohort_id} AS cohort_definition_id,
 # MAGIC     visit_occurrence.person_id AS subject_id,
-# MAGIC     visit_occurrence.visit_start_date AS cohort_start_date,
-# MAGIC     visit_occurrence.visit_end_date AS cohort_end_date
+# MAGIC     cohort.cohort_end_date AS cohort_start_date, --Diagnosis of CHF 
+# MAGIC     MIN(visit_occurrence.visit_end_date) AS cohort_end_date --first er admission
 # MAGIC   FROM
 # MAGIC     visit_occurrence
+# MAGIC       INNER JOIN omop_patient_risk.cohort 
+# MAGIC         ON cohort_definition_id = {target_cohort_id}
+# MAGIC         AND visit_occurrence.person_id = cohort.subject_id
 # MAGIC   WHERE
-# MAGIC     visit_occurrence.visit_concept_id IN ({outcome_concept_id})
+# MAGIC     visit_occurrence.visit_concept_id IN ({outcome_concept_id}) --er admission
+# MAGIC       and visit_occurrence.visit_start_date BETWEEN cohort.cohort_end_date AND date_add(cohort.cohort_end_date, {max_time_at_risk})   
+# MAGIC       --Inp admission after CHF diagnosis and before max time at risk
 # MAGIC   GROUP BY
+# MAGIC     cohort_definition_id,
 # MAGIC     visit_occurrence.person_id,
-# MAGIC     visit_occurrence.visit_start_date,
-# MAGIC     visit_occurrence.visit_end_date
+# MAGIC     cohort.cohort_end_date
 # MAGIC """
 # MAGIC 
 # MAGIC cnt = sql(f'select count(*) as cnt from cohort where cohort_definition_id = {outcome_cohort_id}').collect()[0]['cnt']
@@ -318,6 +340,7 @@ drug_hist_att_id = 2
 
 # COMMAND ----------
 
+#number of events of ER admission from cohort
 sql(f"""
 select count(*) 
 from cohort 
@@ -412,6 +435,7 @@ sql(f'select * from COHORT_ATTRIBUTE where ATTRIBUTE_DEFINITION_ID={outcome_att_
 # COMMAND ----------
 
 sql(f'select count(*) from COHORT_ATTRIBUTE where ATTRIBUTE_DEFINITION_ID={outcome_att_id}').display()
+
 
 # COMMAND ----------
 
@@ -524,6 +548,7 @@ sql(f'select * from COHORT_ATTRIBUTE where ATTRIBUTE_DEFINITION_ID={condition_hi
 # MAGIC So far, we have leveraged OMOP's default schemas to store attributes associated to the target cohort that can be used for training our model. 
 # MAGIC We now, leverage [databricks feature store](https://docs.databricks.com/machine-learning/feature-store/index.html) to create an offline feature store to store features that can be used (and re-used) for training our classifier.
 
+
 # COMMAND ----------
 
 from databricks import feature_store
@@ -553,7 +578,13 @@ feature_schema = schema_name + '_features'
 sql(f"DROP SCHEMA IF EXISTS {feature_schema} CASCADE")
 sql(f"CREATE SCHEMA IF NOT EXISTS {feature_schema}")
 
-# COMMAND ----------
+fs = FeatureStoreClient()
+#no point in time information needed
+fs.register_table(
+    delta_table="person_features_offline",
+    primary_keys=["person_id"],
+    description="Attributes related to a person identity",
+)
 
 # DBTITLE 1,add drug features to feature store
 # MAGIC %py
@@ -581,9 +612,14 @@ sql(f"CREATE SCHEMA IF NOT EXISTS {feature_schema}")
 # MAGIC     description=description
 # MAGIC )
 
-# COMMAND ----------
+#point in time relationship 
+fs.register_table(
+    delta_table="drug_features_offline",
+    primary_keys=["person_id"],
+    timestamp_keys=["drug_exposure_start_date"],
+    description="Attributes related to a person's drug history",
+)
 
-sql(f'SELECT * from {FEATURE_TABLE_NAME} limit 10').display()
 
 # COMMAND ----------
 
@@ -630,7 +666,7 @@ sql(f'SELECT * from {FEATURE_TABLE_NAME} limit 10').display()
 
 # COMMAND ----------
 
-sql(f'select * from {FEATURE_TABLE_NAME} limit 10').display()
+display( spark.table("person_features_online") )
 
 # COMMAND ----------
 
@@ -671,6 +707,7 @@ sql(f'select * from {FEATURE_TABLE_NAME} limit 10').display()
 # COMMAND ----------
 
 sql(f'select * from {FEATURE_TABLE_NAME} limit 10').display()
+
 
 # COMMAND ----------
 
@@ -728,15 +765,13 @@ feature_lookups = [
   ]
 
 training_set = fs.create_training_set(
-  df=training_df,
+  df=outcome_df,
   feature_lookups = feature_lookups,
-  label = 'outcome',
- exclude_columns = ['subject_id']
+  label = 'is_adverse_event_outcome',
+ exclude_columns = ['subject_id', 'prediction_date']
 )
 
-training_df = training_set.load_df().fillna(0)
-
-# COMMAND ----------
+training_df = training_set.load_df()
 
 # DBTITLE 1,proportion of patients with the outcome
 training_df.selectExpr('avg(outcome)').display()

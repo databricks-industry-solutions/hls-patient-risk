@@ -1,8 +1,12 @@
 # Databricks notebook source
+# MAGIC %md This solution accelerator notebook is also available at https://github.com/databricks-industry-solutions/hls-patient-risk
+
+# COMMAND ----------
+
 # MAGIC %md
 # MAGIC # XGBoost Classifier training
 # MAGIC - This is an auto-generated notebook.
-# MAGIC - To reproduce these results, attach this notebook to a cluster with runtime version **12.1.x-cpu-ml-scala2.12**, and rerun it.
+# MAGIC - To reproduce these results, attach this notebook to a cluster with runtime version **12.1.x-cpu-ml-scala2.12**, and rerun it. This requirement is automatically satisfied if you use the Job and Cluster created in the RUNME notebook
 # MAGIC - Compare trials in the [MLflow experiment](#mlflow/experiments/2963708294900826).
 # MAGIC - Clone this notebook into your project folder by selecting **File > Clone** in the notebook toolbar.
 
