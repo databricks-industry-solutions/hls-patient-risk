@@ -23,8 +23,7 @@
 
 # COMMAND ----------
 
-data_path ="/home/amir.kermany@databricks.com/omop_export_gz/"
-
+data_path= "s3://hls-eng-data-public/omop/synthetic-data/omop-gzip/"
 
 # COMMAND ----------
 
@@ -132,26 +131,21 @@ sql(f"USE {schema_name}")
 # MAGIC CREATE WIDGET text cond_history_years DEFAULT "5";
 # MAGIC CREATE WIDGET text max_n_commorbidities DEFAULT "5";
 
-
 # COMMAND ----------
 
 # MAGIC %py
-# MAGIC dbutils.widgets.text('outcome_concept_id', '9203')   #Emergency Room Visit
 # MAGIC outcome_concept_id = dbutils.widgets.get('outcome_concept_id')
-# MAGIC dbutils.widgets.text('target_condition_concept_id', '4229440') #CHF
 # MAGIC target_condition_concept_id = dbutils.widgets.get('target_condition_concept_id')
 # MAGIC 
-# MAGIC dbutils.widgets.text('drug1_concept_id', '40163554') #Warfarin
 # MAGIC drug1_concept_id = dbutils.widgets.get('drug1_concept_id')
-# MAGIC dbutils.widgets.text('drug2_concept_id', '40221901') #Acetaminophen
 # MAGIC drug2_concept_id = dbutils.widgets.get('drug2_concept_id')
-# MAGIC dbutils.widgets.text('min_observation_period', '1095') #whashout period in days
 # MAGIC min_observation_period = dbutils.widgets.get('min_observation_period')
 # MAGIC 
-# MAGIC dbutils.widgets.text('min_time_at_risk', '7')
 # MAGIC min_time_at_risk = dbutils.widgets.get('min_time_at_risk')
-# MAGIC dbutils.widgets.text('max_time_at_risk', '365')
 # MAGIC max_time_at_risk = dbutils.widgets.get('max_time_at_risk')
+# MAGIC 
+# MAGIC cond_history_years = dbutils.widgets.get('cond_history_years')
+# MAGIC max_n_commorbidities = dbutils.widgets.get('max_n_commorbidities')
 
 # COMMAND ----------
 
@@ -183,7 +177,7 @@ drug_hist_att_id = 2
 
 # MAGIC %md
 # MAGIC ### Target Cohort
-
+# MAGIC 
 # MAGIC First we define the [target cohort](https://ohdsi.github.io/TheBookOfOhdsi/Cohorts.html), which is determind based on the following criteria:
 # MAGIC 
 # MAGIC Patients who are newly:
@@ -294,7 +288,6 @@ drug_hist_att_id = 2
 # MAGIC %md
 # MAGIC ### Outcome cohort
 # MAGIC similary we can create an outcome cohort
-
 
 # COMMAND ----------
 
@@ -548,7 +541,6 @@ sql(f'select * from COHORT_ATTRIBUTE where ATTRIBUTE_DEFINITION_ID={condition_hi
 # MAGIC So far, we have leveraged OMOP's default schemas to store attributes associated to the target cohort that can be used for training our model. 
 # MAGIC We now, leverage [databricks feature store](https://docs.databricks.com/machine-learning/feature-store/index.html) to create an offline feature store to store features that can be used (and re-used) for training our classifier.
 
-
 # COMMAND ----------
 
 from databricks import feature_store
@@ -556,12 +548,12 @@ from databricks.feature_store import feature_table, FeatureLookup
 
 # COMMAND ----------
 
-# MAGIC %md
-# MAGIC ### Drug Exposure History Feature
+fs = feature_store.FeatureStoreClient()
 
 # COMMAND ----------
 
-fs = feature_store.FeatureStoreClient()
+# MAGIC %md
+# MAGIC ### Drug Exposure History Feature
 
 # COMMAND ----------
 
@@ -578,47 +570,46 @@ feature_schema = schema_name + '_features'
 sql(f"DROP SCHEMA IF EXISTS {feature_schema} CASCADE")
 sql(f"CREATE SCHEMA IF NOT EXISTS {feature_schema}")
 
-fs = FeatureStoreClient()
-#no point in time information needed
-fs.register_table(
-    delta_table="person_features_offline",
-    primary_keys=["person_id"],
-    description="Attributes related to a person identity",
-)
+# COMMAND ----------
 
 # DBTITLE 1,add drug features to feature store
-# MAGIC %py
-# MAGIC FEATURE_TABLE_NAME = f'{feature_schema}.drug_features'
-# MAGIC description=f"drug features for drugs {drug1_concept_id} and {drug2_concept_id}"
-# MAGIC 
-# MAGIC try:
-# MAGIC   fs.drop_table(FEATURE_TABLE_NAME)
-# MAGIC except ValueError:
-# MAGIC   pass
-# MAGIC   
-# MAGIC drug_features_df = sql(f"""
-# MAGIC     select subject_id, VALUE_AS_CONCEPT_ID as drug_concept_id, VALUE_AS_NUMBER as drug_quantity 
-# MAGIC     from cohort_attribute
-# MAGIC     where 
-# MAGIC     ATTRIBUTE_DEFINITION_ID = {drug_hist_att_id} and COHORT_DEFINITION_ID={target_cohort_id}
-# MAGIC     """
-# MAGIC     ).groupBy('subject_id').pivot('drug_concept_id').sum('drug_quantity').fillna(0)
-# MAGIC 
-# MAGIC fs.create_table(
-# MAGIC     name=FEATURE_TABLE_NAME,
-# MAGIC     primary_keys=["subject_id"],
-# MAGIC     df=drug_features_df,
-# MAGIC     schema=drug_features_df.schema,
-# MAGIC     description=description
-# MAGIC )
+# fs.register_table(
+#     delta_table="person_features_offline",
+#     primary_keys=["person_id"],
+#     description="Attributes related to a person identity",
+# )
 
-#point in time relationship 
-fs.register_table(
-    delta_table="drug_features_offline",
-    primary_keys=["person_id"],
-    timestamp_keys=["drug_exposure_start_date"],
-    description="Attributes related to a person's drug history",
+FEATURE_TABLE_NAME = f'{feature_schema}.drug_features'
+description=f"drug features for drugs {drug1_concept_id} and {drug2_concept_id}"
+
+try:
+  fs.drop_table(FEATURE_TABLE_NAME)
+except ValueError:
+  pass
+  
+drug_features_df = sql(f"""
+    select subject_id, VALUE_AS_CONCEPT_ID as drug_concept_id, VALUE_AS_NUMBER as drug_quantity 
+    from cohort_attribute
+    where 
+    ATTRIBUTE_DEFINITION_ID = {drug_hist_att_id} and COHORT_DEFINITION_ID={target_cohort_id}
+    """
+    ).groupBy('subject_id').pivot('drug_concept_id').sum('drug_quantity').fillna(0)
+
+fs.create_table(
+    name=FEATURE_TABLE_NAME,
+    primary_keys=["subject_id"],
+    df=drug_features_df,
+    schema=drug_features_df.schema,
+    description=description
 )
+
+# #point in time relationship 
+# fs.register_table(
+#     delta_table="drug_features_offline",
+#     primary_keys=["person_id"],
+#     timestamp_keys=["drug_exposure_start_date"],
+#     description="Attributes related to a person's drug history",
+# )
 
 
 # COMMAND ----------
@@ -638,35 +629,34 @@ fs.register_table(
 
 # COMMAND ----------
 
-# MAGIC %py
-# MAGIC FEATURE_TABLE_NAME = f'{feature_schema}.condition_history_features'
-# MAGIC description=f"condition history features for top {max_n_commorbidities} commorbidities"
-# MAGIC try:
-# MAGIC   fs.drop_table(FEATURE_TABLE_NAME)
-# MAGIC except ValueError:
-# MAGIC   pass
-# MAGIC   
-# MAGIC condition_history_df = sql(f"""
-# MAGIC     select subject_id, VALUE_AS_CONCEPT_ID as condition_concept_id, VALUE_AS_NUMBER as n_condition_occurance 
-# MAGIC     from cohort_attribute
-# MAGIC     where 
-# MAGIC     ATTRIBUTE_DEFINITION_ID = {condition_hist_att_id} and COHORT_DEFINITION_ID={target_cohort_id}
-# MAGIC     and
-# MAGIC     VALUE_AS_CONCEPT_ID in (select condition_concept_id from top_comorbidities)
-# MAGIC     """
-# MAGIC     ).groupBy('subject_id').pivot('condition_concept_id').sum('n_condition_occurance').fillna(0)
-# MAGIC 
-# MAGIC fs.create_table(
-# MAGIC     name=FEATURE_TABLE_NAME,
-# MAGIC     primary_keys=["subject_id"],
-# MAGIC     df=condition_history_df,
-# MAGIC     schema=condition_history_df.schema,
-# MAGIC     description=description
-# MAGIC )
+FEATURE_TABLE_NAME = f'{feature_schema}.condition_history_features'
+description=f"condition history features for top {max_n_commorbidities} commorbidities"
+try:
+  fs.drop_table(FEATURE_TABLE_NAME)
+except ValueError:
+  pass
+  
+condition_history_df = sql(f"""
+    select subject_id, VALUE_AS_CONCEPT_ID as condition_concept_id, VALUE_AS_NUMBER as n_condition_occurance 
+    from cohort_attribute
+    where 
+    ATTRIBUTE_DEFINITION_ID = {condition_hist_att_id} and COHORT_DEFINITION_ID={target_cohort_id}
+    and
+    VALUE_AS_CONCEPT_ID in (select condition_concept_id from top_comorbidities)
+    """
+    ).groupBy('subject_id').pivot('condition_concept_id').sum('n_condition_occurance').fillna(0)
+
+fs.create_table(
+    name=FEATURE_TABLE_NAME,
+    primary_keys=["subject_id"],
+    df=condition_history_df,
+    schema=condition_history_df.schema,
+    description=description
+)
 
 # COMMAND ----------
 
-display( spark.table("person_features_online") )
+sql(f'select * from {FEATURE_TABLE_NAME} limit 10').display()
 
 # COMMAND ----------
 
@@ -687,7 +677,6 @@ display( spark.table("person_features_online") )
 # MAGIC     f"""select 
 # MAGIC     c.subject_id,
 # MAGIC     p.GENDER_CONCEPT_ID,
-# MAGIC     p.YEAR_OF_BIRTH,
 # MAGIC     date_diff(c.cohort_start_date, p.BIRTH_DATETIME) as age_in_days,
 # MAGIC     p.RACE_CONCEPT_ID
 # MAGIC   FROM cohort c
@@ -702,12 +691,8 @@ display( spark.table("person_features_online") )
 # MAGIC     schema=subject_demographics_features_df.schema,
 # MAGIC     description=description
 # MAGIC )
-# MAGIC # select * from subject_demographics limit 10
-
-# COMMAND ----------
-
-sql(f'select * from {FEATURE_TABLE_NAME} limit 10').display()
-
+# MAGIC 
+# MAGIC sql(f'select * from {FEATURE_TABLE_NAME} limit 10').display()
 
 # COMMAND ----------
 
@@ -722,31 +707,24 @@ sql(f"SHOW TABLES IN {feature_schema}").display()
 
 # COMMAND ----------
 
-# DBTITLE 1,add outcome labels
-# MAGIC %py
-# MAGIC outcomes_df = sql(f"""
-# MAGIC     select subject_id, VALUE_AS_CONCEPT_ID as outcome_concept_id, VALUE_AS_NUMBER as visited_emergency 
-# MAGIC     from cohort_attribute
-# MAGIC     where 
-# MAGIC     ATTRIBUTE_DEFINITION_ID = {outcome_att_id} and COHORT_DEFINITION_ID={target_cohort_id}
-# MAGIC     """
-# MAGIC     ).groupBy('subject_id').pivot('outcome_concept_id').min('visited_emergency').fillna(0)
+outcomes_df = sql(f"""
+    select subject_id, VALUE_AS_CONCEPT_ID as outcome_concept_id, VALUE_AS_NUMBER as visited_emergency 
+    from cohort_attribute
+    where 
+    ATTRIBUTE_DEFINITION_ID = {outcome_att_id} and COHORT_DEFINITION_ID={target_cohort_id}
+    """
+    ).groupBy('subject_id').pivot('outcome_concept_id').min('visited_emergency').fillna(0)
+  
+training_df = (
+  sql('select subject_id from cohort')
+  .filter(f'cohort_definition_id={target_cohort_id}')
+  .join(outcomes_df, how='left',on='subject_id')
+  .selectExpr('subject_id',f"CAST(`{outcome_concept_id}` AS INT) as outcome")
+  .fillna(0)
+)
 
 # COMMAND ----------
 
-# DBTITLE 1,create training data
-# MAGIC %py
-# MAGIC training_df = (
-# MAGIC   sql('select subject_id from cohort')
-# MAGIC   .filter(f'cohort_definition_id={target_cohort_id}')
-# MAGIC   .join(outcomes_df, how='left',on='subject_id')
-# MAGIC   .selectExpr('subject_id',f"CAST(`{outcome_concept_id}` AS INT) as outcome")
-# MAGIC   .fillna(0)
-# MAGIC   )
-
-# COMMAND ----------
-
-# DBTITLE 1,add features to the training dataset
 from databricks.feature_store import FeatureLookup
 
 feature_lookups = [
@@ -761,32 +739,35 @@ feature_lookups = [
     FeatureLookup(
       table_name = f'{feature_schema}.condition_history_features',
       lookup_key = 'subject_id'
-    )
+    ),
   ]
 
 training_set = fs.create_training_set(
-  df=outcome_df,
+  df=training_df,
   feature_lookups = feature_lookups,
-  label = 'is_adverse_event_outcome',
- exclude_columns = ['subject_id', 'prediction_date']
+  label = 'outcome',
+ exclude_columns = ['subject_id']
 )
 
 training_df = training_set.load_df()
 
-# DBTITLE 1,proportion of patients with the outcome
 training_df.selectExpr('avg(outcome)').display()
 
 # COMMAND ----------
 
+training_df.display()
+
+# COMMAND ----------
+
 # DBTITLE 1,store the dataset
-training_df.write.saveAsTable(f'{feature_schema}.training_data')
+training_df.fillna(0).write.saveAsTable(f'{feature_schema}.training_data')
 
 # COMMAND ----------
 
 # MAGIC %md
 # MAGIC ## Model Tarining
 # MAGIC Now that we have the training data ready, we will proceed to use databricks [AutoML]() to train a binary classifier that predicts the outcome (emergency room visit status) based on the selected features that we have stored in the feature store.
-# MAGIC the next notebook ([02-automl-best-model]($./02-automl-best-model)) is an example notebook generated by AutoML based on the dataset prepard in this step.
+# MAGIC The next notebook ([02-automl-best-model]($./02-automl-best-model)) is an example notebook generated by AutoML based on the dataset prepard in this step.
 # MAGIC 
 # MAGIC 
 # MAGIC <img src='https://hls-eng-data-public.s3.amazonaws.com/img/patient_risk_automl.gif'>
@@ -795,4 +776,4 @@ training_df.write.saveAsTable(f'{feature_schema}.training_data')
 
 # MAGIC %md
 # MAGIC ## 📝 Note
-# MAGIC As you can see in the autogenerated notebook, the accuracy of the model is very low. The primary reason for this is the fact that in the synthetically generated data, the emergency room visits are completely uncorrelated with CHF status or a patients disease history. However, we manually alterred the data to induce correlation between ethnicty and drug exposure history. This can be validated by the SHAP values generated in `Cmd 28` of the notebook. This is also reflected in the correlation matrix in [03-autoML-data-exploration]($./03-autoML-data-exploration) notebook. Also, note that most of the selected features have a very high skew (mostly zero).
+# MAGIC As you can see in the autogenerated notebook, the accuracy of the model is very low. The primary reason for this is the fact that in the synthetically generated data, the emergency room visits are completely uncorrelated with CHF status or a patients disease history. However, we manually alterred the data to induce correlation between ethnicty, gender and drug exposure history with the outcome. This can be validated by the SHAP values generated in `Cmd 28` of the notebook. This is also reflected in the correlation matrix in [03-autoML-data-exploration]($./03-autoML-data-exploration) notebook. Also, note that most of the selected features have a very high skew (mostly zero).
