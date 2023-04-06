@@ -3,6 +3,10 @@
 
 # COMMAND ----------
 
+dbutils.widgets.removeAll()
+
+# COMMAND ----------
+
 # MAGIC %md
 # MAGIC # Patient Level Risk Prediction: Cohorts and Features
 # MAGIC In this notebook we use data already available in OMOP 5.3 to create:
@@ -13,6 +17,51 @@
 # MAGIC  5. Demographics features
 # MAGIC 
 # MAGIC  and create a training dataset that will be used for risk prediction.
+
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC ## Experiment parameters
+# MAGIC First we set up the paramters for the experiment using databricks notebooks widgets utility.
+
+# COMMAND ----------
+
+dbutils.widgets.dropdown('drop_schema','yes',['yes','no'])
+drop_schema = dbutils.widgets.get('drop_schema')
+print(drop_schema)
+
+# COMMAND ----------
+
+# DBTITLE 1,Set up parameters
+# MAGIC %sql
+# MAGIC CREATE WIDGET text target_condition_concept_id DEFAULT "4229440"; -- CHF
+# MAGIC CREATE WIDGET text outcome_concept_id DEFAULT "9203"; -- Emergency Room Visit
+# MAGIC 
+# MAGIC CREATE WIDGET text drug1_concept_id DEFAULT "40163554"; -- Warfarin
+# MAGIC CREATE WIDGET text drug2_concept_id DEFAULT "40221901"; -- Acetaminophen
+# MAGIC 
+# MAGIC CREATE WIDGET text min_observation_period DEFAULT "1095"; -- whashout period in days
+# MAGIC CREATE WIDGET text min_time_at_risk DEFAULT "7";
+# MAGIC CREATE WIDGET text max_time_at_risk DEFAULT "365";
+# MAGIC 
+# MAGIC CREATE WIDGET text cond_history_years DEFAULT "5";
+# MAGIC CREATE WIDGET text max_n_commorbidities DEFAULT "5";
+
+# COMMAND ----------
+
+# MAGIC %py
+# MAGIC outcome_concept_id = dbutils.widgets.get('outcome_concept_id')
+# MAGIC target_condition_concept_id = dbutils.widgets.get('target_condition_concept_id')
+# MAGIC 
+# MAGIC drug1_concept_id = dbutils.widgets.get('drug1_concept_id')
+# MAGIC drug2_concept_id = dbutils.widgets.get('drug2_concept_id')
+# MAGIC min_observation_period = dbutils.widgets.get('min_observation_period')
+# MAGIC 
+# MAGIC min_time_at_risk = dbutils.widgets.get('min_time_at_risk')
+# MAGIC max_time_at_risk = dbutils.widgets.get('max_time_at_risk')
+# MAGIC 
+# MAGIC cond_history_years = dbutils.widgets.get('cond_history_years')
+# MAGIC max_n_commorbidities = dbutils.widgets.get('max_n_commorbidities')
 
 # COMMAND ----------
 
@@ -37,17 +86,21 @@ tables = ["condition_occurrence","concept","concept_ancestor","observation_perio
 
 # COMMAND ----------
 
-# DBTITLE 1,create a new omop schema
+
 user_name=sql(f"SELECT current_user() as user").collect()[0]['user'].split('@')[0].replace('.','_')
-schema_name = f"OMOP_{user_name}"
-sql(f"DROP SCHEMA IF EXISTS {schema_name} CASCADE")
-sql(f"CREATE SCHEMA IF NOT EXISTS {schema_name}")
 
 # COMMAND ----------
 
-# DBTITLE 1,load tables and add to the schema
-for table_name in tables:
-  spark.read.csv(f"{data_path}{table_name}.csv",header=True,sep="\t", inferSchema=True).write.saveAsTable(f"{schema_name}.{table_name}")
+# DBTITLE 1,create a new omop schema and load tables
+schema_name = f"OMOP_{user_name}"
+
+if drop_schema=='yes':
+  sql(f"DROP SCHEMA IF EXISTS {schema_name} CASCADE")
+  sql(f"CREATE SCHEMA IF NOT EXISTS {schema_name}")
+
+  for table_name in tables:
+    spark.read.csv(f"{data_path}{table_name}.csv",header=True,sep="\t", inferSchema=True).write.saveAsTable(f"{schema_name}.{table_name}")
+  
 
 # COMMAND ----------
 
@@ -107,45 +160,6 @@ sql(f"USE {schema_name}")
 # MAGIC   VALUE_AS_NUMBER DOUBLE,
 # MAGIC   VALUE_AS_CONCEPT_ID LONG
 # MAGIC ) USING DELTA;
-
-# COMMAND ----------
-
-# MAGIC %md
-# MAGIC ## Experiment parameters
-# MAGIC Now we set up the paramters for the experiment using databricks notebooks widgets utility.
-
-# COMMAND ----------
-
-# DBTITLE 1,Set up parameters
-# MAGIC %sql
-# MAGIC CREATE WIDGET text target_condition_concept_id DEFAULT "4229440"; -- CHF
-# MAGIC CREATE WIDGET text outcome_concept_id DEFAULT "9203"; -- Emergency Room Visit
-# MAGIC 
-# MAGIC CREATE WIDGET text drug1_concept_id DEFAULT "40163554"; -- Warfarin
-# MAGIC CREATE WIDGET text drug2_concept_id DEFAULT "40221901"; -- Acetaminophen
-# MAGIC 
-# MAGIC CREATE WIDGET text min_observation_period DEFAULT "1095"; -- whashout period in days
-# MAGIC CREATE WIDGET text min_time_at_risk DEFAULT "7";
-# MAGIC CREATE WIDGET text max_time_at_risk DEFAULT "365";
-# MAGIC 
-# MAGIC CREATE WIDGET text cond_history_years DEFAULT "5";
-# MAGIC CREATE WIDGET text max_n_commorbidities DEFAULT "5";
-
-# COMMAND ----------
-
-# MAGIC %py
-# MAGIC outcome_concept_id = dbutils.widgets.get('outcome_concept_id')
-# MAGIC target_condition_concept_id = dbutils.widgets.get('target_condition_concept_id')
-# MAGIC 
-# MAGIC drug1_concept_id = dbutils.widgets.get('drug1_concept_id')
-# MAGIC drug2_concept_id = dbutils.widgets.get('drug2_concept_id')
-# MAGIC min_observation_period = dbutils.widgets.get('min_observation_period')
-# MAGIC 
-# MAGIC min_time_at_risk = dbutils.widgets.get('min_time_at_risk')
-# MAGIC max_time_at_risk = dbutils.widgets.get('max_time_at_risk')
-# MAGIC 
-# MAGIC cond_history_years = dbutils.widgets.get('cond_history_years')
-# MAGIC max_n_commorbidities = dbutils.widgets.get('max_n_commorbidities')
 
 # COMMAND ----------
 
