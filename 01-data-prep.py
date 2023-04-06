@@ -28,7 +28,6 @@ dbutils.widgets.removeAll()
 
 dbutils.widgets.dropdown('drop_schema','yes',['yes','no'])
 drop_schema = dbutils.widgets.get('drop_schema')
-print(drop_schema)
 
 # COMMAND ----------
 
@@ -49,19 +48,18 @@ print(drop_schema)
 
 # COMMAND ----------
 
-# MAGIC %py
-# MAGIC outcome_concept_id = dbutils.widgets.get('outcome_concept_id')
-# MAGIC target_condition_concept_id = dbutils.widgets.get('target_condition_concept_id')
-# MAGIC 
-# MAGIC drug1_concept_id = dbutils.widgets.get('drug1_concept_id')
-# MAGIC drug2_concept_id = dbutils.widgets.get('drug2_concept_id')
-# MAGIC min_observation_period = dbutils.widgets.get('min_observation_period')
-# MAGIC 
-# MAGIC min_time_at_risk = dbutils.widgets.get('min_time_at_risk')
-# MAGIC max_time_at_risk = dbutils.widgets.get('max_time_at_risk')
-# MAGIC 
-# MAGIC cond_history_years = dbutils.widgets.get('cond_history_years')
-# MAGIC max_n_commorbidities = dbutils.widgets.get('max_n_commorbidities')
+target_condition_concept_id = dbutils.widgets.get('target_condition_concept_id')
+outcome_concept_id = dbutils.widgets.get('outcome_concept_id')
+
+drug1_concept_id = dbutils.widgets.get('drug1_concept_id')
+drug2_concept_id = dbutils.widgets.get('drug2_concept_id')
+
+min_observation_period = dbutils.widgets.get('min_observation_period')
+min_time_at_risk = dbutils.widgets.get('min_time_at_risk')
+max_time_at_risk = dbutils.widgets.get('max_time_at_risk')
+
+cond_history_years = dbutils.widgets.get('cond_history_years')
+max_n_commorbidities = dbutils.widgets.get('max_n_commorbidities')
 
 # COMMAND ----------
 
