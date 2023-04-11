@@ -1,13 +1,9 @@
 # Databricks notebook source
-# MAGIC %md This solution accelerator notebook is also available at https://github.com/databricks-industry-solutions/hls-patient-risk
-
-# COMMAND ----------
-
 # MAGIC %md
-# MAGIC # XGBoost Classifier training
+# MAGIC # LightGBM Classifier training
 # MAGIC - This is an auto-generated notebook.
-# MAGIC - To reproduce these results, attach this notebook to a cluster with runtime version **12.1.x-cpu-ml-scala2.12**, and rerun it. This requirement is automatically satisfied if you use the Job and Cluster created in the RUNME notebook
-# MAGIC - Compare trials in the [MLflow experiment](#mlflow/experiments/2963708294900826).
+# MAGIC - To reproduce these results, attach this notebook to a cluster with runtime version **12.2.x-cpu-ml-scala2.12**, and rerun it.
+# MAGIC - Compare trials in the [MLflow experiment](#mlflow/experiments/2601264123936977).
 # MAGIC - Clone this notebook into your project folder by selecting **File > Clone** in the notebook toolbar.
 
 # COMMAND ----------
@@ -36,7 +32,7 @@ os.makedirs(input_temp_dir)
 
 
 # Download the artifact and read it into a pandas DataFrame
-input_data_path = mlflow.artifacts.download_artifacts(run_id="5027f57d589a4329a60e49d929d9f653", artifact_path="data", dst_path=input_temp_dir)
+input_data_path = mlflow.artifacts.download_artifacts(run_id="d9d8402cf2bd4b508771dd29cdeaa94c", artifact_path="data", dst_path=input_temp_dir)
 
 df_loaded = pd.read_parquet(os.path.join(input_data_path, "training_data"))
 # Delete the temp data
@@ -50,12 +46,12 @@ df_loaded.head(5)
 # MAGIC %md
 # MAGIC ### Select supported columns
 # MAGIC Select only the columns that are supported. This allows us to train a model that can predict on a dataset that has extra columns that are not used in training.
-# MAGIC `["ETHNICITY_CONCEPT_ID"]` are dropped in the pipelines. See the Alerts tab of the AutoML Experiment page for details on why these columns are dropped.
+# MAGIC `[]` are dropped in the pipelines. See the Alerts tab of the AutoML Experiment page for details on why these columns are dropped.
 
 # COMMAND ----------
 
 from databricks.automl_runtime.sklearn.column_selector import ColumnSelector
-supported_cols = ["4112343", "4289517", "RACE_CONCEPT_ID", "432867", "age_in_days", "4237458", "40163554", "40221901", "260139", "312437", "254761", "GENDER_CONCEPT_ID", "YEAR_OF_BIRTH", "40481087", "80502", "437663"]
+supported_cols = ["4112343", "RACE_CONCEPT_ID", "432867", "age_in_days", "4217975", "40163554", "260139", "40221901", "GENDER_CONCEPT_ID", "40481087"]
 col_selector = ColumnSelector(supported_cols)
 
 # COMMAND ----------
@@ -86,7 +82,7 @@ bool_pipeline = Pipeline(steps=[
     ("onehot", SklearnOneHotEncoder(handle_unknown="ignore", drop="first")),
 ])
 
-bool_transformers = [("boolean", bool_pipeline, ["4112343", "4289517", "432867", "4237458", "40163554", "40221901", "254761", "260139", "312437", "GENDER_CONCEPT_ID", "40481087", "80502", "437663"])]
+bool_transformers = [("boolean", bool_pipeline, ["4112343", "432867", "4217975", "40163554", "260139", "40221901", "GENDER_CONCEPT_ID", "40481087"])]
 
 # COMMAND ----------
 
@@ -103,15 +99,15 @@ from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import FunctionTransformer, StandardScaler
 
 num_imputers = []
-num_imputers.append(("impute_mean", SimpleImputer(), ["254761", "260139", "312437", "40163554", "40221901", "40481087", "4112343", "4237458", "4289517", "432867", "437663", "80502", "GENDER_CONCEPT_ID", "RACE_CONCEPT_ID", "YEAR_OF_BIRTH", "age_in_days"]))
+num_imputers.append(("impute_mean", SimpleImputer(), ["260139", "40163554", "40221901", "40481087", "4112343", "4217975", "432867", "GENDER_CONCEPT_ID", "RACE_CONCEPT_ID", "age_in_days"]))
 
 numerical_pipeline = Pipeline(steps=[
-    ("converter", FunctionTransformer(lambda df: df.apply(pd.to_numeric, errors="coerce"))),
+    ("converter", FunctionTransformer(lambda df: df.apply(pd.to_numeric, errors='coerce'))),
     ("imputers", ColumnTransformer(num_imputers)),
     ("standardizer", StandardScaler()),
 ])
 
-numerical_transformers = [("numerical", numerical_pipeline, ["4112343", "RACE_CONCEPT_ID", "432867", "age_in_days", "4289517", "4237458", "40163554", "40221901", "260139", "312437", "254761", "GENDER_CONCEPT_ID", "YEAR_OF_BIRTH", "40481087", "80502", "437663"])]
+numerical_transformers = [("numerical", numerical_pipeline, ["4112343", "RACE_CONCEPT_ID", "432867", "age_in_days", "4217975", "40163554", "260139", "40221901", "GENDER_CONCEPT_ID", "40481087"])]
 
 # COMMAND ----------
 
@@ -158,25 +154,25 @@ preprocessor = ColumnTransformer(transformers, remainder="passthrough", sparse_t
 # MAGIC - Validation (20% of the dataset used to tune the hyperparameters of the model)
 # MAGIC - Test (20% of the dataset used to report the true performance of the model on an unseen dataset)
 # MAGIC 
-# MAGIC `_automl_split_col_8e11` contains the information of which set a given row belongs to.
+# MAGIC `_automl_split_col_028c` contains the information of which set a given row belongs to.
 # MAGIC We use this column to split the dataset into the above 3 sets. 
 # MAGIC The column should not be used for training so it is dropped after split is done.
 
 # COMMAND ----------
 
-# AutoML completed train - validation - test split internally and used _automl_split_col_8e11 to specify the set
-split_train_df = df_loaded.loc[df_loaded._automl_split_col_8e11 == "train"]
-split_val_df = df_loaded.loc[df_loaded._automl_split_col_8e11 == "val"]
-split_test_df = df_loaded.loc[df_loaded._automl_split_col_8e11 == "test"]
+# AutoML completed train - validation - test split internally and used _automl_split_col_028c to specify the set
+split_train_df = df_loaded.loc[df_loaded._automl_split_col_028c == "train"]
+split_val_df = df_loaded.loc[df_loaded._automl_split_col_028c == "val"]
+split_test_df = df_loaded.loc[df_loaded._automl_split_col_028c == "test"]
 
-# Separate target column from features and drop _automl_split_col_8e11
-X_train = split_train_df.drop([target_col, "_automl_split_col_8e11"], axis=1)
+# Separate target column from features and drop _automl_split_col_028c
+X_train = split_train_df.drop([target_col, "_automl_split_col_028c"], axis=1)
 y_train = split_train_df[target_col]
 
-X_val = split_val_df.drop([target_col, "_automl_split_col_8e11"], axis=1)
+X_val = split_val_df.drop([target_col, "_automl_split_col_028c"], axis=1)
 y_val = split_val_df[target_col]
 
-X_test = split_test_df.drop([target_col, "_automl_split_col_8e11"], axis=1)
+X_test = split_test_df.drop([target_col, "_automl_split_col_028c"], axis=1)
 y_test = split_test_df[target_col]
 
 # COMMAND ----------
@@ -184,15 +180,16 @@ y_test = split_test_df[target_col]
 # MAGIC %md
 # MAGIC ## Train classification model
 # MAGIC - Log relevant metrics to MLflow to track runs
-# MAGIC - All the runs are logged under [this MLflow experiment](#mlflow/experiments/2963708294900826)
+# MAGIC - All the runs are logged under [this MLflow experiment](#mlflow/experiments/2601264123936977)
 # MAGIC - Change the model parameters and re-run the training cell to log a different trial to the MLflow experiment
 # MAGIC - To view the full list of tunable hyperparameters, check the output of the cell below
 
 # COMMAND ----------
 
-from xgboost import XGBClassifier
+import lightgbm
+from lightgbm import LGBMClassifier
 
-help(XGBClassifier)
+help(LGBMClassifier)
 
 # COMMAND ----------
 
@@ -212,8 +209,6 @@ from mlflow import pyfunc
 import sklearn
 from sklearn import set_config
 from sklearn.pipeline import Pipeline
-from sklearn.preprocessing import LabelEncoder
-from databricks.automl_runtime.sklearn import TransformedTargetClassifier
 
 from hyperopt import hp, tpe, fmin, STATUS_OK, Trials
 
@@ -225,21 +220,15 @@ pipeline_val = Pipeline([
 ])
 pipeline_val.fit(X_train, y_train)
 X_val_processed = pipeline_val.transform(X_val)
-label_encoder_val = LabelEncoder()
-label_encoder_val.fit(y_train)
-y_val_processed = label_encoder_val.transform(y_val)
 
 def objective(params):
-  with mlflow.start_run(experiment_id="2963708294900826") as mlflow_run:
-    xgbc_classifier = TransformedTargetClassifier(
-        classifier=XGBClassifier(**params),
-        transformer=LabelEncoder()  # XGBClassifier requires the target values to be integers between 0 and n_class-1
-    )
+  with mlflow.start_run(experiment_id="2601264123936977") as mlflow_run:
+    lgbmc_classifier = LGBMClassifier(**params)
 
     model = Pipeline([
         ("column_selector", col_selector),
         ("preprocessor", preprocessor),
-        ("classifier", xgbc_classifier),
+        ("classifier", lgbmc_classifier),
     ])
 
     # Enable automatic logging of input samples, metrics, parameters, and models
@@ -247,7 +236,7 @@ def objective(params):
         log_input_examples=True,
         silent=True)
 
-    model.fit(X_train, y_train, classifier__early_stopping_rounds=5, classifier__verbose=False, classifier__eval_set=[(X_val_processed,y_val_processed)])
+    model.fit(X_train, y_train, classifier__callbacks=[lightgbm.early_stopping(5), lightgbm.log_evaluation(0)], classifier__eval_set=[(X_val_processed,y_val)])
 
     
     # Log metrics for the training set
@@ -263,7 +252,7 @@ def objective(params):
         evaluator_config = {"log_model_explainability": False,
                             "metric_prefix": "training_" , "pos_label": 1 }
     )
-    xgbc_training_metrics = training_eval_result.metrics
+    lgbmc_training_metrics = training_eval_result.metrics
     # Log metrics for the validation set
     X_val[target_col] = y_val
     val_eval_result = mlflow.evaluate(
@@ -274,7 +263,7 @@ def objective(params):
         evaluator_config = {"log_model_explainability": False,
                             "metric_prefix": "val_" , "pos_label": 1 }
     )
-    xgbc_val_metrics = val_eval_result.metrics
+    lgbmc_val_metrics = val_eval_result.metrics
     # Log metrics for the test set
     X_test[target_col] = y_test
     test_eval_result = mlflow.evaluate(
@@ -285,19 +274,19 @@ def objective(params):
         evaluator_config = {"log_model_explainability": False,
                             "metric_prefix": "test_" , "pos_label": 1 }
     )
-    xgbc_test_metrics = test_eval_result.metrics
+    lgbmc_test_metrics = test_eval_result.metrics
 
-    loss = xgbc_val_metrics["val_f1_score"]
+    loss = lgbmc_val_metrics["val_f1_score"]
 
     # Truncate metric key names so they can be displayed together
-    xgbc_val_metrics = {k.replace("val_", ""): v for k, v in xgbc_val_metrics.items()}
-    xgbc_test_metrics = {k.replace("test_", ""): v for k, v in xgbc_test_metrics.items()}
+    lgbmc_val_metrics = {k.replace("val_", ""): v for k, v in lgbmc_val_metrics.items()}
+    lgbmc_test_metrics = {k.replace("test_", ""): v for k, v in lgbmc_test_metrics.items()}
 
     return {
       "loss": loss,
       "status": STATUS_OK,
-      "val_metrics": xgbc_val_metrics,
-      "test_metrics": xgbc_test_metrics,
+      "val_metrics": lgbmc_val_metrics,
+      "test_metrics": lgbmc_test_metrics,
       "model": model,
       "run": mlflow_run,
     }
@@ -317,7 +306,7 @@ def objective(params):
 # MAGIC search expressions.
 # MAGIC 
 # MAGIC For documentation on parameters used by the model in use, please see:
-# MAGIC https://xgboost.readthedocs.io/en/stable/python/python_api.html#xgboost.XGBClassifier
+# MAGIC https://lightgbm.readthedocs.io/en/stable/pythonapi/lightgbm.LGBMClassifier.html
 # MAGIC 
 # MAGIC NOTE: The above URL points to a stable version of the documentation corresponding to the last
 # MAGIC released version of the package. The documentation may differ slightly for the package version
@@ -326,15 +315,18 @@ def objective(params):
 # COMMAND ----------
 
 space = {
-  "colsample_bytree": 0.25270178168556573,
-  "learning_rate": 0.0030096884423209554,
-  "max_depth": 3,
-  "min_child_weight": 14,
-  "n_estimators": 109,
-  "n_jobs": 100,
-  "subsample": 0.25337825731075486,
-  "verbosity": 0,
-  "random_state": 441593769,
+  "colsample_bytree": 0.6680950386988038,
+  "lambda_l1": 6.654206371943774,
+  "lambda_l2": 10.761904282341032,
+  "learning_rate": 0.08917803946355803,
+  "max_bin": 434,
+  "max_depth": 7,
+  "min_child_samples": 24,
+  "n_estimators": 160,
+  "num_leaves": 26,
+  "path_smooth": 38.78186078979259,
+  "subsample": 0.5008371887144083,
+  "random_state": 133506779,
 }
 
 # COMMAND ----------
@@ -396,17 +388,17 @@ model
 # COMMAND ----------
 
 # Set this flag to True and re-run the notebook to see the SHAP plots
-shap_enabled = False
+shap_enabled = True
 
 # COMMAND ----------
 
 if shap_enabled:
     from shap import KernelExplainer, summary_plot
     # Sample background data for SHAP Explainer. Increase the sample size to reduce variance.
-    train_sample = X_train.sample(n=min(100, X_train.shape[0]), random_state=441593769)
+    train_sample = X_train.sample(n=min(100, X_train.shape[0]), random_state=133506779)
 
     # Sample some rows from the validation set to explain. Increase the sample size for more thorough results.
-    example = X_val.sample(n=min(100, X_val.shape[0]), random_state=441593769)
+    example = X_val.sample(n=min(100, X_val.shape[0]), random_state=133506779)
 
     # Use Kernel SHAP to explain feature importance on the sampled rows from the validation set.
     predict = lambda x: model.predict(pd.DataFrame(x, columns=X_train.columns))
@@ -465,7 +457,7 @@ print(f"runs:/{ mlflow_run.info.run_id }/model")
 # COMMAND ----------
 
 # Paste the entire output (%md ...) to an empty cell, and click the link to see the MLflow run page
-print(f"%md [Link to model run page](#mlflow/experiments/2963708294900826/runs/{ mlflow_run.info.run_id }/artifactPath/model)")
+print(f"%md [Link to model run page](#mlflow/experiments/2601264123936977/runs/{ mlflow_run.info.run_id }/artifactPath/model)")
 
 # COMMAND ----------
 
