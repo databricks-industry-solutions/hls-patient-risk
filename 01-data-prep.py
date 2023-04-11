@@ -26,27 +26,24 @@ dbutils.widgets.removeAll()
 
 # COMMAND ----------
 
-dbutils.widgets.dropdown('drop_schema','yes',['yes','no'])
+dbutils.widgets.dropdown('drop_schema','yes',['yes','no']) # set to no if you already have the OMOP data downlaoded and created the schema 
+
+dbutils.widgets.text('target_condition_concept_id','4229440') # CHF
+dbutils.widgets.text('outcome_concept_id','9203') # Emergency Room Visit
+
+dbutils.widgets.text('drug1_concept_id','40163554') # Warfarin
+dbutils.widgets.text('drug2_concept_id','40221901') # Acetaminophen
+
+dbutils.widgets.text('min_observation_period','1095') # whashout period in days
+dbutils.widgets.text('min_time_at_risk','7')
+
+dbutils.widgets.text('max_time_at_risk','365')
+dbutils.widgets.text('cond_history_years','5')
+dbutils.widgets.text('max_n_commorbidities','5')
+
+# COMMAND ----------
+
 drop_schema = dbutils.widgets.get('drop_schema')
-
-# COMMAND ----------
-
-# DBTITLE 1,Set up parameters
-# MAGIC %sql
-# MAGIC CREATE WIDGET text target_condition_concept_id DEFAULT "4229440"; -- CHF
-# MAGIC CREATE WIDGET text outcome_concept_id DEFAULT "9203"; -- Emergency Room Visit
-# MAGIC 
-# MAGIC CREATE WIDGET text drug1_concept_id DEFAULT "40163554"; -- Warfarin
-# MAGIC CREATE WIDGET text drug2_concept_id DEFAULT "40221901"; -- Acetaminophen
-# MAGIC 
-# MAGIC CREATE WIDGET text min_observation_period DEFAULT "1095"; -- whashout period in days
-# MAGIC CREATE WIDGET text min_time_at_risk DEFAULT "7";
-# MAGIC CREATE WIDGET text max_time_at_risk DEFAULT "365";
-# MAGIC 
-# MAGIC CREATE WIDGET text cond_history_years DEFAULT "5";
-# MAGIC CREATE WIDGET text max_n_commorbidities DEFAULT "5";
-
-# COMMAND ----------
 
 target_condition_concept_id = dbutils.widgets.get('target_condition_concept_id')
 outcome_concept_id = dbutils.widgets.get('outcome_concept_id')
@@ -60,6 +57,22 @@ max_time_at_risk = dbutils.widgets.get('max_time_at_risk')
 
 cond_history_years = dbutils.widgets.get('cond_history_years')
 max_n_commorbidities = dbutils.widgets.get('max_n_commorbidities')
+
+# COMMAND ----------
+
+# MAGIC %sql
+# MAGIC CREATE WIDGET text target_condition_concept_id DEFAULT "4229440"; -- CHF
+# MAGIC CREATE WIDGET text outcome_concept_id DEFAULT "9203"; -- Emergency Room Visit
+# MAGIC 
+# MAGIC CREATE WIDGET text drug1_concept_id DEFAULT "40163554"; -- Warfarin
+# MAGIC CREATE WIDGET text drug2_concept_id DEFAULT "40221901"; -- Acetaminophen
+# MAGIC 
+# MAGIC CREATE WIDGET text min_observation_period DEFAULT "1095"; -- whashout period in days
+# MAGIC CREATE WIDGET text min_time_at_risk DEFAULT "7";
+# MAGIC CREATE WIDGET text max_time_at_risk DEFAULT "365";
+# MAGIC 
+# MAGIC CREATE WIDGET text cond_history_years DEFAULT "5";
+# MAGIC CREATE WIDGET text max_n_commorbidities DEFAULT "5";
 
 # COMMAND ----------
 
