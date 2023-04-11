@@ -75,7 +75,7 @@ job_json = {
             {
                 "job_cluster_key": "patient_risk_cluster",
                 "notebook_task": {
-                    "notebook_path": f"03-automl-data-exploration"
+                    "notebook_path": f"03-autoML-data-exploration"
                 },
                 "task_key": "patient_risk_03",
                 "depends_on": [
