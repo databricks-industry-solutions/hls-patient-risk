@@ -97,7 +97,6 @@ tables = ["condition_occurrence","concept","concept_ancestor","observation_perio
 
 # COMMAND ----------
 
-
 user_name=sql(f"SELECT current_user() as user").collect()[0]['user'].split('@')[0].replace('.','_')
 
 # COMMAND ----------
@@ -187,7 +186,7 @@ drug_hist_att_id = 2
 
 # COMMAND ----------
 
-# DBTITLE 1,list the concept names
+# DBTITLE 1,List the concept names
 # MAGIC %python
 # MAGIC input_concepts = sql(f"""
 # MAGIC select concept_id, concept_name from concept 
@@ -219,9 +218,8 @@ drug_hist_att_id = 2
 
 # DBTITLE 1,Create condition cohort
 # MAGIC %py
-# MAGIC sql(f"""DROP TABLE IF EXISTS earliest_condition_onset;""")
 # MAGIC sql(f"""
-# MAGIC CREATE TABLE earliest_condition_onset AS (
+# MAGIC CREATE OR REPLACE TABLE earliest_condition_onset AS (
 # MAGIC   SELECT
 # MAGIC     person_id,
 # MAGIC     min(condition_start_date) as condition_start_date
@@ -315,7 +313,7 @@ drug_hist_att_id = 2
 
 # MAGIC %md
 # MAGIC ### Outcome cohort
-# MAGIC similary we can create an outcome cohort
+# MAGIC Similary we can create an outcome cohort
 
 # COMMAND ----------
 
@@ -506,11 +504,9 @@ sql(f'select count(*) from COHORT_ATTRIBUTE where ATTRIBUTE_DEFINITION_ID={outco
 
 sql(f'select count(*) from COHORT_ATTRIBUTE where ATTRIBUTE_DEFINITION_ID={condition_hist_att_id}').display()
 
-
 # COMMAND ----------
 
 sql(f'select * from COHORT_ATTRIBUTE where ATTRIBUTE_DEFINITION_ID={condition_hist_att_id}').display()
-
 
 # COMMAND ----------
 

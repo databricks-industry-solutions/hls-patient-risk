@@ -85,7 +85,7 @@ drug_hist_att_id = 2
 
 # MAGIC %md
 # MAGIC ## Create the Training Dataset
-# MAGIC Now that our cohorts are in place, we can create the final dataset. we then use Databricks AutoML to train a model for predicting risk and also understand features impacting patient risk. 
+# MAGIC Now that our cohorts are in place, we can create the final dataset. We then use Databricks AutoML to train a model for predicting risk and also understand features impacting patient risk. 
 # MAGIC To make it simpler, first we create a function that decides whether two cohorts overlap:
 
 # COMMAND ----------
@@ -164,7 +164,7 @@ print(f"Best run id: {summary_cl.best_trial.mlflow_run_id}")
 # COMMAND ----------
 
 # DBTITLE 1,Name your model
-model_name = "omop_patientrisk_model_v2"
+model_name = "omop_patientrisk_model"
 
 # COMMAND ----------
 

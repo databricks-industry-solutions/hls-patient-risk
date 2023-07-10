@@ -7,6 +7,10 @@ fs = feature_store.FeatureStoreClient()
 
 # COMMAND ----------
 
+# MAGIC %run ./resources/00-init-modelserving 
+
+# COMMAND ----------
+
 user_name=sql(f"SELECT current_user() as user").collect()[0]['user'].split('@')[0].replace('.','_')
 schema_name = f"OMOP_{user_name}"
 feature_schema = schema_name + '_features'
@@ -29,7 +33,7 @@ online_store_spec = AzureCosmosDBSpec(
   write_secret_prefix="one-env-dynamodb-fs-write/solutionaccelerator",
   read_secret_prefix="one-env-dynamodb-fs-read/solutionaccelerator",
   database_name="solution_accelerator_patient_risk_scoring_feature_store",
-  container_name="subject_demographics_features_v2"
+  container_name="subject_demographics_features_v3"
 )
 
 # Push the feature table to online store.
@@ -48,7 +52,7 @@ online_store_spec = AzureCosmosDBSpec(
   write_secret_prefix="one-env-dynamodb-fs-write/solutionaccelerator",
   read_secret_prefix="one-env-dynamodb-fs-read/solutionaccelerator",
   database_name="solution_accelerator_patient_risk_scoring_feature_store",
-  container_name="drug_features_v2"
+  container_name="drug_features_v3"
 )
 
 # Push the feature table to online store.
@@ -67,7 +71,7 @@ online_store_spec = AzureCosmosDBSpec(
   write_secret_prefix="one-env-dynamodb-fs-write/solutionaccelerator",
   read_secret_prefix="one-env-dynamodb-fs-read/solutionaccelerator",
   database_name="solution_accelerator_patient_risk_scoring_feature_store",
-  container_name="condition_history_features_v2"
+  container_name="condition_history_features_v3"
 )
 
 # Push the feature table to online store.
@@ -76,7 +80,7 @@ fs.publish_table(f'{feature_schema}.condition_history_features', online_store_sp
 # COMMAND ----------
 
 # DBTITLE 1,Load your model name
-model_name = "omop_patientrisk_model_v2"
+model_name = "omop_patientrisk_model"
 
 # COMMAND ----------
 
@@ -197,7 +201,7 @@ latest_model = client.get_latest_versions(model_name, stages=["Production"])[0]
 serving_client = EndpointApiClient()
 
 #Start the enpoint using the REST API (you can do it using the UI directly)
-serving_client.create_enpoint_if_not_exists("patientrisk_feature_store_endpoint_v2", model_name=model_name, model_version = latest_model.version, workload_size="Small", scale_to_zero_enabled=True, wait_start = True)
+serving_client.create_endpoint_if_not_exists("patientrisk_feature_store_endpoint_v3", model_name=model_name, model_version = latest_model.version, workload_size="Small", scale_to_zero_enabled=True, wait_start = True)
 
 # COMMAND ----------
 
@@ -219,7 +223,7 @@ def create_tf_serving_json(data):
     return {'inputs': {name: data[name].tolist() for name in data.keys()} if isinstance(data, dict) else data.tolist()}
 
 def score_model(dataset):
-    url = 'https://e2-demo-field-eng.cloud.databricks.com/serving-endpoints/patientrisk_feature_store_endpoint_v2/invocations'
+    url = 'https://e2-demo-field-eng.cloud.databricks.com/serving-endpoints/patientrisk_feature_store_endpoint_v3/invocations'
     headers = {'Authorization': f'Bearer {DATABRICKS_TOKEN}', 'Content-Type': 'application/json'}
     ds_dict = {'dataframe_split': dataset.to_dict(orient='split')} if isinstance(dataset, pd.DataFrame) else create_tf_serving_json(dataset)
     data_json = json.dumps(ds_dict, allow_nan=True)
