@@ -3,26 +3,51 @@
 
 # COMMAND ----------
 
-dbutils.widgets.removeAll()
-
-# COMMAND ----------
-
 # MAGIC %md
 # MAGIC # Patient Level Risk Prediction: Cohorts and Features
-# MAGIC In this notebook we use data already available in OMOP 5.3 to create:
+# MAGIC In this [01-Engineering]($01-Engineering) notebook we use data already available in OMOP 5.3 to create:
 # MAGIC  1. Target cohort (patinets recently diagnosed with CHF)
 # MAGIC  2. Outcome Cohort (patients adimitted to emergency room)
 # MAGIC  3. Drug exposure history features
 # MAGIC  4. Commorbidity history features
 # MAGIC  5. Demographics features
 # MAGIC
-# MAGIC  and create a training dataset that will be used for risk prediction.
+# MAGIC  The [02-OfflineFeatureStore]($02-OfflineFeatureStore)  notebook will create Offline Feature store tables from our OMOP schema.
+# MAGIC
+# MAGIC  The [03-AutoML]($03-AutoML) notebook will create a training dataset for "risk prediction" and train/register a model.
+# MAGIC
+# MAGIC  The [04-OnlineFeatureStore]($04-OnlineFeatureStore) notebook will create Online Feature store tables and a serverless model endpoint for real-time serving and automated feature lookup.
+# MAGIC
+# MAGIC ### Requirements
+# MAGIC
+# MAGIC * Access to Azure Cosmos DB.
+# MAGIC     - The last notebook uses Cosmos DB as the online store and guides you through how to generate secrets and register them with Databricks Secret Management.  
+# MAGIC * Cluster Requirements
+# MAGIC   - The cluster must have the Azure Cosmos DB connector for Spark installed. See the instructions in the section **Prepare the compute cluster**.
+# MAGIC     - Unity Catalog enabled workspace: Databricks Runtime 13.0 ML or above with the cluster policy **Unrestricted** or **Shared Compute**. 
+# MAGIC     - Non-Unity Catalog enabled workspace: Databricks Runtime 13.0 ML or above.
+
+# COMMAND ----------
+
+# MAGIC %md ## Prepare the compute cluster
+# MAGIC
+# MAGIC 1. When creating the compute cluster, select **Unrestricted** or **Shared Compute** policy. To run this notebook on a **Shared Compute** cluster, you must select Databricks Runtime for ML 13.0 or above.
+# MAGIC 1. After creating the cluster, follow these steps to install the [latest Azure Cosmos DB connector for Spark 3.2](https://github.com/Azure/azure-sdk-for-java/tree/main/sdk/cosmos/azure-cosmos-spark_3-3_2-12): 
+# MAGIC     - Navigate to the compute cluster and click the **Libraries** tab.
+# MAGIC     - Click **Install new**.
+# MAGIC     - Click **Maven** and enter the coordinates of the latest version. For example: `com.azure.cosmos.spark:azure-cosmos-spark_3-2_2-12:4.18.2`
+# MAGIC     - Click **Install**. 
+# MAGIC 1. Attach this notebook to the cluster.
 
 # COMMAND ----------
 
 # MAGIC %md
 # MAGIC ## Experiment parameters
 # MAGIC First we set up the paramters for the experiment using databricks notebooks widgets utility.
+
+# COMMAND ----------
+
+dbutils.widgets.removeAll()
 
 # COMMAND ----------
 
