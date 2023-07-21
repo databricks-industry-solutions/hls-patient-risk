@@ -14,7 +14,7 @@
 # MAGIC
 # MAGIC  The [02-OfflineFeatureStore]($02-OfflineFeatureStore)  notebook will create Offline Feature store tables from our OMOP schema.
 # MAGIC
-# MAGIC  The [03-AutoML]($03-AutoML) notebook will create a training dataset for "risk prediction" and train/register a model.
+# MAGIC  The [03-AutoML]($03-AutoML) notebook will create a training dataset for "risk prediction" and train then register a classification model.
 # MAGIC
 # MAGIC  The [04-OnlineFeatureStore]($04-OnlineFeatureStore) notebook will create Online Feature store tables and a serverless model endpoint for real-time serving and automated feature lookup.
 # MAGIC
@@ -24,14 +24,14 @@
 # MAGIC     - The last notebook uses Cosmos DB as the online store and guides you through how to generate secrets and register them with Databricks Secret Management.  
 # MAGIC * Cluster Requirements
 # MAGIC   - The cluster must have the Azure Cosmos DB connector for Spark installed. See the instructions in the section **Prepare the compute cluster**.
-# MAGIC     - Unity Catalog enabled workspace: Databricks Runtime 13.0 ML or above with the cluster policy **Unrestricted** or **Shared Compute**. 
-# MAGIC     - Non-Unity Catalog enabled workspace: Databricks Runtime 13.0 ML or above.
+# MAGIC     - Unity Catalog enabled workspace: Databricks Runtime 13.0 ML or above with the access mode **Assigned** or **No Isolation Shared**. 
+# MAGIC     - Non-Unity Catalog enabled workspace: Databricks Runtime 13.0 ML or above with cluster mode **Standard**.
 
 # COMMAND ----------
 
 # MAGIC %md ## Prepare the compute cluster
 # MAGIC
-# MAGIC 1. When creating the compute cluster, select **Unrestricted** or **Shared Compute** policy. To run this notebook on a **Shared Compute** cluster, you must select Databricks Runtime for ML 13.0 or above.
+# MAGIC 1. When creating the compute cluster select Databricks Runtime ML 13.0 or above and choose access mode **Assigned** or **No Isolation Shared** for Unity Catalog workspaces, or **Standard** cluster mode for Non-Unity Catalog workspaces.
 # MAGIC 1. After creating the cluster, follow these steps to install the [latest Azure Cosmos DB connector for Spark 3.2](https://github.com/Azure/azure-sdk-for-java/tree/main/sdk/cosmos/azure-cosmos-spark_3-3_2-12): 
 # MAGIC     - Navigate to the compute cluster and click the **Libraries** tab.
 # MAGIC     - Click **Install new**.
@@ -47,10 +47,8 @@
 
 # COMMAND ----------
 
+# DBTITLE 1,Create widgets with values
 dbutils.widgets.removeAll()
-
-# COMMAND ----------
-
 dbutils.widgets.dropdown('drop_schema','yes',['yes','no']) # set to no if you already have the OMOP data downlaoded and created the schema 
 
 dbutils.widgets.text('target_condition_concept_id','4229440') # CHF
@@ -68,6 +66,7 @@ dbutils.widgets.text('max_n_commorbidities','5')
 
 # COMMAND ----------
 
+# DBTITLE 1,Create Variables using widget values
 drop_schema = dbutils.widgets.get('drop_schema')
 
 target_condition_concept_id = dbutils.widgets.get('target_condition_concept_id')
@@ -85,7 +84,9 @@ max_n_commorbidities = dbutils.widgets.get('max_n_commorbidities')
 
 # COMMAND ----------
 
+# DBTITLE 1,I don't think this is needed
 # MAGIC %sql
+# MAGIC /*
 # MAGIC CREATE WIDGET text target_condition_concept_id DEFAULT "4229440"; -- CHF
 # MAGIC CREATE WIDGET text outcome_concept_id DEFAULT "9203"; -- Emergency Room Visit
 # MAGIC
@@ -98,6 +99,7 @@ max_n_commorbidities = dbutils.widgets.get('max_n_commorbidities')
 # MAGIC
 # MAGIC CREATE WIDGET text cond_history_years DEFAULT "5";
 # MAGIC CREATE WIDGET text max_n_commorbidities DEFAULT "5";
+# MAGIC */
 
 # COMMAND ----------
 
@@ -108,25 +110,28 @@ max_n_commorbidities = dbutils.widgets.get('max_n_commorbidities')
 
 # COMMAND ----------
 
+# DBTITLE 1,Define path with raw datasets
 data_path= "s3://hls-eng-data-public/omop/synthetic-data/omop-gzip/"
 
 # COMMAND ----------
 
-# DBTITLE 1,list of available datasets
+# DBTITLE 1,List of available datasets
 display(dbutils.fs.ls(data_path))
 
 # COMMAND ----------
 
-# DBTITLE 1,list of tables to load
+# DBTITLE 1,List of tables to load
 tables = ["condition_occurrence","concept","concept_ancestor","observation_period","visit_occurrence","condition_era","drug_exposure","person"]
 
 # COMMAND ----------
 
+# DBTITLE 1,Dynamically define user_name based on who's running the notebook
 user_name=sql(f"SELECT current_user() as user").collect()[0]['user'].split('@')[0].replace('.','_')
+print(user_name)
 
 # COMMAND ----------
 
-# DBTITLE 1,create a new omop schema and load tables
+# DBTITLE 1,Create new OMOP schema and load tables
 schema_name = f"OMOP_{user_name}"
 if drop_schema=='yes':
   sql(f"DROP SCHEMA IF EXISTS {schema_name} CASCADE")
@@ -134,24 +139,22 @@ if drop_schema=='yes':
 
   for table_name in tables:
     spark.read.csv(f"{data_path}{table_name}.csv",header=True,sep="\t", inferSchema=True).write.saveAsTable(f"{schema_name}.{table_name}")
-  
-
-# COMMAND ----------
-
+    
 print(schema_name)
 
 # COMMAND ----------
 
-# DBTITLE 1,list tables
+# DBTITLE 1,List the tables created in our new OMOP schema
 sql(f"SHOW TABLES in {schema_name}").display()
 
 # COMMAND ----------
 
+# DBTITLE 1,Set new OMOP as default schema to simplify code later
 sql(f"USE {schema_name}")
 
 # COMMAND ----------
 
-# DBTITLE 1,example data for visit_occurrence
+# DBTITLE 1,Sample data from visit_occurrence
 # MAGIC %sql
 # MAGIC SELECT * FROM visit_occurrence limit 10
 
@@ -201,7 +204,7 @@ sql(f"USE {schema_name}")
 
 # COMMAND ----------
 
-# DBTITLE 1,set up ids for cohorts
+# DBTITLE 1,Set up ids for cohorts
 target_cohort_id = 1
 outcome_cohort_id = 2
 
@@ -232,16 +235,16 @@ drug_hist_att_id = 2
 # MAGIC
 # MAGIC First we define the [target cohort](https://ohdsi.github.io/TheBookOfOhdsi/Cohorts.html), which is determind based on the following criteria:
 # MAGIC
-# MAGIC Patients who are newly:
-# MAGIC - diagnosed with chronic congestive heart failure (CCHF)
-# MAGIC - persons with a condition occurrence record of CCHF or any descendants, indexed at the first diagnosis (cohort entry date)
-# MAGIC - who have at least three years (1095 days) of prior observation before their first diagnosis
+# MAGIC Patients who:
+# MAGIC - are newly diagnosed with chronic congestive heart failure (CCHF)
+# MAGIC - have a condition occurrence record of CCHF or any descendants, indexed at the first diagnosis (cohort entry date)
+# MAGIC - have at least three years (1095 days) of prior observation before their first diagnosis
 # MAGIC
 # MAGIC For the target condition, we choose only to allow patients enter once at the earliest time they have been diagnosed. In the following query we also include ancestor concepts.
 
 # COMMAND ----------
 
-# DBTITLE 1,Create condition cohort
+# DBTITLE 1,Create the condition cohort
 # MAGIC %py
 # MAGIC sql(f"""
 # MAGIC CREATE OR REPLACE TABLE earliest_condition_onset AS (
@@ -266,7 +269,7 @@ drug_hist_att_id = 2
 
 # COMMAND ----------
 
-# DBTITLE 1,create target Cohort
+# DBTITLE 1,Create the target cohort
 # MAGIC %py
 # MAGIC #Minimum of 3 years prior observation
 # MAGIC #Minimum of 1 year available after observation
@@ -295,7 +298,7 @@ drug_hist_att_id = 2
 
 # COMMAND ----------
 
-# DBTITLE 1,target cohort
+# DBTITLE 1,Sample from the target cohort
 # MAGIC %py
 # MAGIC sql(f"""select * 
 # MAGIC from cohort 
@@ -304,7 +307,7 @@ drug_hist_att_id = 2
 
 # COMMAND ----------
 
-# DBTITLE 1,count of subject in target control
+# DBTITLE 1,Count the subjects in target cohort
 # MAGIC %py
 # MAGIC sql(f"""select count(*) 
 # MAGIC from cohort 
@@ -313,7 +316,7 @@ drug_hist_att_id = 2
 
 # COMMAND ----------
 
-# DBTITLE 1,add target cohort information 
+# DBTITLE 1,Add target cohort information 
 # MAGIC %py
 # MAGIC target_cohort_concept_name = input_concepts.filter(f'concept_id = {target_condition_concept_id}' ).collect()[0]['concept_name']
 # MAGIC target_cohort_description = f"""
@@ -337,8 +340,8 @@ drug_hist_att_id = 2
 # COMMAND ----------
 
 # MAGIC %md
-# MAGIC ### Outcome cohort
-# MAGIC Similary we can create an outcome cohort
+# MAGIC ### Outcome Cohort
+# MAGIC Similary we can create an outcome cohort from our target cohort
 
 # COMMAND ----------
 
@@ -376,6 +379,7 @@ drug_hist_att_id = 2
 
 # COMMAND ----------
 
+# DBTITLE 1,Inspect the outcome cohort
 # MAGIC %py
 # MAGIC sql(f"""select * 
 # MAGIC from cohort 
@@ -392,6 +396,7 @@ where cohort_definition_id = {outcome_cohort_id}""").display()
 
 # COMMAND ----------
 
+# DBTITLE 1,Update our Cohort_Definition to include "Outcome Cohort" aka ER Visits
 # MAGIC %py
 # MAGIC outcome_cohort_concept_name = input_concepts.filter(f'concept_id = {outcome_concept_id}' ).collect()[0]['concept_name']
 # MAGIC outcome_cohort_description = f"""
@@ -406,6 +411,7 @@ where cohort_definition_id = {outcome_cohort_id}""").display()
 
 # COMMAND ----------
 
+# DBTITLE 1,View Cohort_Definition
 # MAGIC %sql
 # MAGIC select * from cohort_definition limit 10  
 
@@ -422,7 +428,7 @@ where cohort_definition_id = {outcome_cohort_id}""").display()
 
 # COMMAND ----------
 
-# DBTITLE 1,function to validate time overlap
+# DBTITLE 1,Function to validate time overlap
 # MAGIC %sql
 # MAGIC CREATE
 # MAGIC OR REPLACE TEMPORARY FUNCTION is_valid_time_overlap (
@@ -442,7 +448,7 @@ where cohort_definition_id = {outcome_cohort_id}""").display()
 
 # MAGIC %md
 # MAGIC ### Outcome Attribute
-# MAGIC First, we add the outcome attributes for patinets in the target cohort, this is where we determine which of the pateints withing the cohort, have expereinced the outcome in question within the timeframe of interest. 
+# MAGIC First, we add the outcome attributes for patients in the target cohort, this is where we determine which of the patients within the cohort experienced the outcome in question within the timeframe of interest. 
 
 # COMMAND ----------
 
@@ -474,10 +480,12 @@ where cohort_definition_id = {outcome_cohort_id}""").display()
 
 # COMMAND ----------
 
+# DBTITLE 1,Inspect the subset of target cohort which experienced the outcome within the timeframe
 sql(f'select * from COHORT_ATTRIBUTE where ATTRIBUTE_DEFINITION_ID={outcome_att_id}').display()
 
 # COMMAND ----------
 
+# DBTITLE 1,Count them
 sql(f'select count(*) from COHORT_ATTRIBUTE where ATTRIBUTE_DEFINITION_ID={outcome_att_id}').display()
 
 
@@ -485,7 +493,7 @@ sql(f'select count(*) from COHORT_ATTRIBUTE where ATTRIBUTE_DEFINITION_ID={outco
 
 # MAGIC %md
 # MAGIC ### Condition History
-# MAGIC Now we add condition history attributes, corresponding to the top `n` comorbidities found among the target cohort members. Note that a cohrot member is considered to have the given attribute if she has been diagnosed with the condition within the observation period. 
+# MAGIC Now we add condition history attributes, corresponding to the top `n` comorbidities found among the target cohort members. Note that a cohort member is considered to have the given attribute if they were diagnosed with the condition within the observation period. 
 
 # COMMAND ----------
 
@@ -527,11 +535,12 @@ sql(f'select count(*) from COHORT_ATTRIBUTE where ATTRIBUTE_DEFINITION_ID={outco
 
 # COMMAND ----------
 
-sql(f'select count(*) from COHORT_ATTRIBUTE where ATTRIBUTE_DEFINITION_ID={condition_hist_att_id}').display()
+sql(f'select * from COHORT_ATTRIBUTE where ATTRIBUTE_DEFINITION_ID={condition_hist_att_id}').display()
 
 # COMMAND ----------
 
-sql(f'select * from COHORT_ATTRIBUTE where ATTRIBUTE_DEFINITION_ID={condition_hist_att_id}').display()
+# DBTITLE 1,Count them
+sql(f'select count(*) from COHORT_ATTRIBUTE where ATTRIBUTE_DEFINITION_ID={condition_hist_att_id}').display()
 
 # COMMAND ----------
 
@@ -580,5 +589,6 @@ sql(f'select * from COHORT_ATTRIBUTE where ATTRIBUTE_DEFINITION_ID={condition_hi
 
 # COMMAND ----------
 
+# DBTITLE 1,Count them
 # MAGIC %py
 # MAGIC sql(f'select count(*) as cnt from COHORT_ATTRIBUTE where ATTRIBUTE_DEFINITION_ID = {drug_hist_att_id}').display()

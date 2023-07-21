@@ -47,7 +47,9 @@ max_n_commorbidities = dbutils.widgets.get('max_n_commorbidities')
 
 # COMMAND ----------
 
+# DBTITLE 1,I don't think this is needed
 # MAGIC %sql
+# MAGIC /*
 # MAGIC CREATE WIDGET text target_condition_concept_id DEFAULT "4229440"; -- CHF
 # MAGIC CREATE WIDGET text outcome_concept_id DEFAULT "9203"; -- Emergency Room Visit
 # MAGIC
@@ -60,6 +62,7 @@ max_n_commorbidities = dbutils.widgets.get('max_n_commorbidities')
 # MAGIC
 # MAGIC CREATE WIDGET text cond_history_years DEFAULT "5";
 # MAGIC CREATE WIDGET text max_n_commorbidities DEFAULT "5";
+# MAGIC */
 
 # COMMAND ----------
 
