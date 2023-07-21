@@ -1,6 +1,8 @@
 # Databricks notebook source
+# DBTITLE 1,Import Libraries
 import mlflow
 import os
+import databricks.automl as db_automl
 from databricks import feature_store
 from databricks.feature_store import feature_table, FeatureLookup
 fs = feature_store.FeatureStoreClient()
@@ -13,6 +15,7 @@ fs = feature_store.FeatureStoreClient()
 
 # COMMAND ----------
 
+# DBTITLE 1,Create widgets with values
 dbutils.widgets.removeAll()
 
 dbutils.widgets.dropdown('drop_schema','yes',['yes','no']) # set to no if you already have the OMOP data downlaoded and created the schema 
@@ -28,10 +31,11 @@ dbutils.widgets.text('min_time_at_risk','7')
 
 dbutils.widgets.text('max_time_at_risk','365')
 dbutils.widgets.text('cond_history_years','5')
-dbutils.widgets.text('max_n_commorbidities','5')
+dbutils.widgets.text('max_n_comorbidities','5')
 
 # COMMAND ----------
 
+# DBTITLE 1,Create Variables using widget values
 drop_schema = dbutils.widgets.get('drop_schema')
 
 target_condition_concept_id = dbutils.widgets.get('target_condition_concept_id')
@@ -45,11 +49,13 @@ min_time_at_risk = dbutils.widgets.get('min_time_at_risk')
 max_time_at_risk = dbutils.widgets.get('max_time_at_risk')
 
 cond_history_years = dbutils.widgets.get('cond_history_years')
-max_n_commorbidities = dbutils.widgets.get('max_n_commorbidities')
+max_n_comorbidities = dbutils.widgets.get('max_n_comorbidities')
 
 # COMMAND ----------
 
+# DBTITLE 1,I don't think we need this
 # MAGIC %sql
+# MAGIC /*
 # MAGIC CREATE WIDGET text target_condition_concept_id DEFAULT "4229440"; -- CHF
 # MAGIC CREATE WIDGET text outcome_concept_id DEFAULT "9203"; -- Emergency Room Visit
 # MAGIC
@@ -61,15 +67,8 @@ max_n_commorbidities = dbutils.widgets.get('max_n_commorbidities')
 # MAGIC CREATE WIDGET text max_time_at_risk DEFAULT "365";
 # MAGIC
 # MAGIC CREATE WIDGET text cond_history_years DEFAULT "5";
-# MAGIC CREATE WIDGET text max_n_commorbidities DEFAULT "5";
-
-# COMMAND ----------
-
-user_name=sql(f"SELECT current_user() as user").collect()[0]['user'].split('@')[0].replace('.','_')
-schema_name = f"OMOP_{user_name}"
-feature_schema = schema_name + '_features'
-sql(f"USE {schema_name}")
-print(schema_name)
+# MAGIC CREATE WIDGET text max_n_comorbidities DEFAULT "5";
+# MAGIC */
 
 # COMMAND ----------
 
@@ -83,6 +82,15 @@ drug_hist_att_id = 2
 
 # COMMAND ----------
 
+# DBTITLE 1,Dynamically define user_name and schema_name
+user_name=sql(f"SELECT current_user() as user").collect()[0]['user'].split('@')[0].replace('.','_')
+schema_name = f"OMOP_{user_name}"
+feature_schema = schema_name + '_features'
+sql(f"USE {schema_name}")
+print(schema_name)
+
+# COMMAND ----------
+
 # MAGIC %md
 # MAGIC ## Create the Training Dataset
 # MAGIC Now that our cohorts are in place, we can create the final dataset. We then use Databricks AutoML to train a model for predicting risk and also understand features impacting patient risk. 
@@ -90,6 +98,7 @@ drug_hist_att_id = 2
 
 # COMMAND ----------
 
+# DBTITLE 1,List Feature Store tables made in 02-OfflineFeatureStore notebook
 sql(f"SHOW TABLES IN {feature_schema}").display()
 
 # COMMAND ----------
@@ -146,6 +155,7 @@ training_df.selectExpr('avg(outcome)').display()
 
 # COMMAND ----------
 
+# DBTITLE 1,Display Training Dataframe
 training_df.display()
 
 # COMMAND ----------
@@ -156,8 +166,6 @@ training_df.fillna(0).write.mode("overwrite").saveAsTable(f'{feature_schema}.tra
 # COMMAND ----------
 
 # DBTITLE 1,Use automl to build an ML model 
-import databricks.automl as db_automl
-
 summary_cl = db_automl.classify(training_df, target_col="outcome", primary_metric="f1", timeout_minutes=5, experiment_dir = "/patientrisk/experiments/feature_store")
 print(f"Best run id: {summary_cl.best_trial.mlflow_run_id}")
 

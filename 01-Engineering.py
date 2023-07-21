@@ -9,7 +9,7 @@
 # MAGIC  1. Target cohort (patinets recently diagnosed with CHF)
 # MAGIC  2. Outcome Cohort (patients adimitted to emergency room)
 # MAGIC  3. Drug exposure history features
-# MAGIC  4. Commorbidity history features
+# MAGIC  4. Comorbidity history features
 # MAGIC  5. Demographics features
 # MAGIC
 # MAGIC  The [02-OfflineFeatureStore]($02-OfflineFeatureStore)  notebook will create Offline Feature store tables from our OMOP schema.
@@ -62,7 +62,7 @@ dbutils.widgets.text('min_time_at_risk','7')
 
 dbutils.widgets.text('max_time_at_risk','365')
 dbutils.widgets.text('cond_history_years','5')
-dbutils.widgets.text('max_n_commorbidities','5')
+dbutils.widgets.text('max_n_comorbidities','5')
 
 # COMMAND ----------
 
@@ -80,7 +80,7 @@ min_time_at_risk = dbutils.widgets.get('min_time_at_risk')
 max_time_at_risk = dbutils.widgets.get('max_time_at_risk')
 
 cond_history_years = dbutils.widgets.get('cond_history_years')
-max_n_commorbidities = dbutils.widgets.get('max_n_commorbidities')
+max_n_comorbidities = dbutils.widgets.get('max_n_comorbidities')
 
 # COMMAND ----------
 

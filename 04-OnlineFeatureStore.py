@@ -1,16 +1,23 @@
 # Databricks notebook source
 import mlflow
 import os
+import requests
+import numpy as np
+import pandas as pd
+import json
+
 from databricks import feature_store
 from databricks.feature_store import feature_table, FeatureLookup
 fs = feature_store.FeatureStoreClient()
 
 # COMMAND ----------
 
+# DBTITLE 1,Create Class for making serving endpoint
 # MAGIC %run ./resources/00-init-modelserving 
 
 # COMMAND ----------
 
+# DBTITLE 1,Dynamically define user_name and schema_name
 user_name=sql(f"SELECT current_user() as user").collect()[0]['user'].split('@')[0].replace('.','_')
 schema_name = f"OMOP_{user_name}"
 feature_schema = schema_name + '_features'
@@ -213,12 +220,6 @@ DATABRICKS_TOKEN = "dapid768198092de9b82bd55a50523b696d5"
 # COMMAND ----------
 
 # DBTITLE 1,Functions to Score using Endpoint
-import os
-import requests
-import numpy as np
-import pandas as pd
-import json
-
 def create_tf_serving_json(data):
     return {'inputs': {name: data[name].tolist() for name in data.keys()} if isinstance(data, dict) else data.tolist()}
 

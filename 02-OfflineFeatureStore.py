@@ -1,7 +1,8 @@
 # Databricks notebook source
-import databricks.automl as db_automl
-import mlflow
-import os
+# DBTITLE 1,Import Libraries
+#import databricks.automl as db_automl
+#import mlflow
+#import os
 
 # COMMAND ----------
 
@@ -11,6 +12,7 @@ import os
 
 # COMMAND ----------
 
+# DBTITLE 1,Create widgets with values
 dbutils.widgets.removeAll()
 
 dbutils.widgets.dropdown('drop_schema','yes',['yes','no']) # set to no if you already have the OMOP data downlaoded and created the schema 
@@ -26,10 +28,11 @@ dbutils.widgets.text('min_time_at_risk','7')
 
 dbutils.widgets.text('max_time_at_risk','365')
 dbutils.widgets.text('cond_history_years','5')
-dbutils.widgets.text('max_n_commorbidities','5')
+dbutils.widgets.text('max_n_comorbidities','5')
 
 # COMMAND ----------
 
+# DBTITLE 1,Create Variables using widget values
 drop_schema = dbutils.widgets.get('drop_schema')
 
 target_condition_concept_id = dbutils.widgets.get('target_condition_concept_id')
@@ -43,7 +46,7 @@ min_time_at_risk = dbutils.widgets.get('min_time_at_risk')
 max_time_at_risk = dbutils.widgets.get('max_time_at_risk')
 
 cond_history_years = dbutils.widgets.get('cond_history_years')
-max_n_commorbidities = dbutils.widgets.get('max_n_commorbidities')
+max_n_comorbidities = dbutils.widgets.get('max_n_comorbidities')
 
 # COMMAND ----------
 
@@ -83,12 +86,14 @@ drug_hist_att_id = 2
 
 # COMMAND ----------
 
+# DBTITLE 1,Import Feature Store Libraries
 from databricks import feature_store
 from databricks.feature_store import feature_table, FeatureLookup
 fs = feature_store.FeatureStoreClient()
 
 # COMMAND ----------
 
+# DBTITLE 1,Dynamically define user_name and schema_name
 user_name=sql(f"SELECT current_user() as user").collect()[0]['user'].split('@')[0].replace('.','_')
 schema_name = f"OMOP_{user_name}"
 sql(f"USE {schema_name}")
@@ -96,20 +101,12 @@ print(schema_name)
 
 # COMMAND ----------
 
-# MAGIC %md
-# MAGIC ### Drug Exposure History Feature
-
-# COMMAND ----------
-
+# DBTITLE 1,List tables made in 01-Engineering notebook
 sql(f"SHOW TABLES IN {schema_name}").display()
 
 # COMMAND ----------
 
-# MAGIC %md
-# MAGIC We create a new shema to hold the features as well as the training dataset for this analysis.
-
-# COMMAND ----------
-
+# DBTITLE 1,Create a new schema to hold the features as well as the training dataset for this analysis
 feature_schema = schema_name + '_features'
 sql(f"DROP SCHEMA IF EXISTS {feature_schema} CASCADE")
 sql(f"CREATE SCHEMA IF NOT EXISTS {feature_schema}")
@@ -117,7 +114,12 @@ print(feature_schema)
 
 # COMMAND ----------
 
-# DBTITLE 1,Add drug features to feature store
+# MAGIC %md
+# MAGIC ### Create Feature Store: Drug Exposure History
+
+# COMMAND ----------
+
+# DBTITLE 1,Create a feature store for the drug history features
 FEATURE_TABLE_NAME = f'{feature_schema}.drug_features'
 description=f"drug features for drugs {drug1_concept_id} and {drug2_concept_id}"
 
@@ -153,27 +155,28 @@ fs.create_table(
 
 # COMMAND ----------
 
+# DBTITLE 1,Select from Feature Store
 sql(f'select * from {FEATURE_TABLE_NAME} limit 10').display()
 
 # COMMAND ----------
 
 # MAGIC %md
-# MAGIC ### Commorbidity history features
+# MAGIC ### Create Feature Store: Comorbidity History
 
 # COMMAND ----------
 
-# DBTITLE 1,top n commorbidities
+# DBTITLE 1,View top n comorbidities
 # MAGIC %py
 # MAGIC sql(f"""
 # MAGIC select VALUE_AS_CONCEPT_ID as condition_concept_id, count(*) as cnt from cohort_attribute where ATTRIBUTE_DEFINITION_ID={condition_hist_att_id} group by 1
 # MAGIC order by 2 desc
-# MAGIC limit {max_n_commorbidities}
+# MAGIC limit {max_n_comorbidities}
 # MAGIC """).createOrReplaceTempView('top_comorbidities')
 
 # COMMAND ----------
 
 FEATURE_TABLE_NAME = f'{feature_schema}.condition_history_features'
-description=f"condition history features for top {max_n_commorbidities} commorbidities"
+description=f"condition history features for top {max_n_comorbidities} comorbidities"
 try:
   fs.drop_table(FEATURE_TABLE_NAME)
 except ValueError:
@@ -204,7 +207,7 @@ sql(f'select * from {FEATURE_TABLE_NAME} limit 10').display()
 # COMMAND ----------
 
 # MAGIC %md
-# MAGIC ### Demographics information 
+# MAGIC ### Create Feature Store: Demographics Information 
 
 # COMMAND ----------
 
@@ -236,3 +239,8 @@ sql(f'select * from {FEATURE_TABLE_NAME} limit 10').display()
 # MAGIC )
 # MAGIC
 # MAGIC sql(f'select * from {FEATURE_TABLE_NAME} limit 10').display()
+
+# COMMAND ----------
+
+# DBTITLE 1,Select from Feature Store
+sql(f'select * from {FEATURE_TABLE_NAME} limit 10').display()
