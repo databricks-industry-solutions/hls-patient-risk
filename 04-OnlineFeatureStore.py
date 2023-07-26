@@ -1,4 +1,15 @@
 # Databricks notebook source
+# MAGIC %md
+# MAGIC # Prepare the Environment
+
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC ## Import Libraries and define user names
+
+# COMMAND ----------
+
+# DBTITLE 1,Import Libraries
 import mlflow
 import os
 import requests
@@ -12,7 +23,7 @@ fs = feature_store.FeatureStoreClient()
 
 # COMMAND ----------
 
-# DBTITLE 1,Create Class for making serving endpoint
+# DBTITLE 1,Create Class for making model serving endpoint
 # MAGIC %run ./resources/00-init-modelserving 
 
 # COMMAND ----------
@@ -23,6 +34,44 @@ schema_name = f"OMOP_{user_name}"
 feature_schema = schema_name + '_features'
 sql(f"USE {schema_name}")
 print(schema_name)
+
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC ## Set up Cosmos DB credentials
+# MAGIC
+# MAGIC In this section, you need to take some manual steps to make Cosmos DB accessible to this notebook. Databricks needs permission to create and update Cosmos DB containers so that Cosmos DB can work with Feature Store. The following steps stores Cosmos DB keys in Databricks Secrets.
+# MAGIC
+# MAGIC ### Look up the keys for Cosmos DB
+# MAGIC 1. Go to Azure portal at https://portal.azure.com/
+# MAGIC 2. Search and open "Cosmos DB", then create or select an account.
+# MAGIC 3. Navigate to "keys" the view the URI and credentials.
+# MAGIC
+# MAGIC ### Provide online store credentials using Databricks secrets
+# MAGIC
+# MAGIC **Note:** For simplicity, the commands below use predefined names for the scope and secrets. To choose your own scope and secret names, follow the process in the Databricks [documentation](https://docs.microsoft.com/azure/databricks/applications/machine-learning/feature-store/online-feature-stores).
+# MAGIC
+# MAGIC 1. Create two secret scopes in Databricks.
+# MAGIC
+# MAGIC     ```
+# MAGIC     databricks secrets create-scope --scope feature-store-example-read
+# MAGIC     databricks secrets create-scope --scope feature-store-example-write
+# MAGIC     ```
+# MAGIC
+# MAGIC 2. Create secrets in the scopes.  
+# MAGIC    **Note:** the keys should follow the format `<prefix>-authorization-key`. For simplicity, these commands use predefined names here. When the commands run, you will be prompted to copy your secrets into an editor.
+# MAGIC
+# MAGIC     ```
+# MAGIC     databricks secrets put --scope feature-store-example-read --key cosmos-authorization-key
+# MAGIC     databricks secrets put --scope feature-store-example-write --key cosmos-authorization-key
+# MAGIC     ```
+# MAGIC     
+# MAGIC Now the credentials are stored with Databricks Secrets. You will use them below to create the online store.
+
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC # Publish features to the online feature store
 
 # COMMAND ----------
 
@@ -91,6 +140,7 @@ model_name = "omop_patientrisk_model"
 
 # COMMAND ----------
 
+# DBTITLE 1,No longer needed. its in the backend folder
 import time
 import requests 
 

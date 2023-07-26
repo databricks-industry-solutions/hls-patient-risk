@@ -35,7 +35,7 @@ dbutils.widgets.text('max_n_comorbidities','5')
 
 # COMMAND ----------
 
-# DBTITLE 1,Create Variables using widget values
+# DBTITLE 1,Create variables using widget values
 drop_schema = dbutils.widgets.get('drop_schema')
 
 target_condition_concept_id = dbutils.widgets.get('target_condition_concept_id')
@@ -50,25 +50,6 @@ max_time_at_risk = dbutils.widgets.get('max_time_at_risk')
 
 cond_history_years = dbutils.widgets.get('cond_history_years')
 max_n_comorbidities = dbutils.widgets.get('max_n_comorbidities')
-
-# COMMAND ----------
-
-# DBTITLE 1,I don't think we need this
-# MAGIC %sql
-# MAGIC /*
-# MAGIC CREATE WIDGET text target_condition_concept_id DEFAULT "4229440"; -- CHF
-# MAGIC CREATE WIDGET text outcome_concept_id DEFAULT "9203"; -- Emergency Room Visit
-# MAGIC
-# MAGIC CREATE WIDGET text drug1_concept_id DEFAULT "40163554"; -- Warfarin
-# MAGIC CREATE WIDGET text drug2_concept_id DEFAULT "40221901"; -- Acetaminophen
-# MAGIC
-# MAGIC CREATE WIDGET text min_observation_period DEFAULT "1095"; -- whashout period in days
-# MAGIC CREATE WIDGET text min_time_at_risk DEFAULT "7";
-# MAGIC CREATE WIDGET text max_time_at_risk DEFAULT "365";
-# MAGIC
-# MAGIC CREATE WIDGET text cond_history_years DEFAULT "5";
-# MAGIC CREATE WIDGET text max_n_comorbidities DEFAULT "5";
-# MAGIC */
 
 # COMMAND ----------
 
@@ -91,15 +72,15 @@ print(schema_name)
 
 # COMMAND ----------
 
-# MAGIC %md
-# MAGIC ## Create the Training Dataset
-# MAGIC Now that our cohorts are in place, we can create the final dataset. We then use Databricks AutoML to train a model for predicting risk and also understand features impacting patient risk. 
-# MAGIC To make it simpler, first we create a function that decides whether two cohorts overlap:
+# DBTITLE 1,List Feature Store tables made in 02-OfflineFeatureStore notebook
+sql(f"SHOW TABLES IN {feature_schema}").display()
 
 # COMMAND ----------
 
-# DBTITLE 1,List Feature Store tables made in 02-OfflineFeatureStore notebook
-sql(f"SHOW TABLES IN {feature_schema}").display()
+# MAGIC %md
+# MAGIC # Create the Training Dataset
+# MAGIC Now that our cohorts are in place, we can create the final dataset. We then use Databricks AutoML to train a model for predicting risk and also understand features impacting patient risk. 
+# MAGIC To make it simpler, first we create a function that decides whether two cohorts overlap:
 
 # COMMAND ----------
 
@@ -165,6 +146,18 @@ training_df.fillna(0).write.mode("overwrite").saveAsTable(f'{feature_schema}.tra
 
 # COMMAND ----------
 
+# MAGIC %md
+# MAGIC # Model Development
+# MAGIC We will use AutoML to train our model, then register it with MLflow, and finally make predictions on batch data
+
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC ## Train a classification model w/ AutoML
+# MAGIC Using the training_df composed of our three feature tables we will predict if a patient is likely to be admited to the emergency room.
+
+# COMMAND ----------
+
 # DBTITLE 1,Use automl to build an ML model 
 summary_cl = db_automl.classify(training_df, target_col="outcome", primary_metric="f1", timeout_minutes=5, experiment_dir = "/patientrisk/experiments/feature_store")
 print(f"Best run id: {summary_cl.best_trial.mlflow_run_id}")
@@ -176,7 +169,13 @@ model_name = "omop_patientrisk_model"
 
 # COMMAND ----------
 
-# DBTITLE 1,Save best model in the registry & flag it as Production ready
+# MAGIC %md
+# MAGIC ## Save our best model to MLflow registry
+# MAGIC Next, we'll get AutoML's best model and add it to our registry. Because we used the feature store to keep track of our model & features, we'll log the best model as a new run using the `FeatureStoreClient.log_model()` function.
+
+# COMMAND ----------
+
+# DBTITLE 1,Save the best model to the registry & flag it as production ready
 # creating sample input to be logged (do not include the live features in the schema as they'll be computed within the model)
 df_sample = training_df.limit(10).toPandas()
 x_sample = df_sample.drop(columns=["outcome"])
@@ -196,7 +195,7 @@ with mlflow.start_run(run_name="best_fs_model", experiment_id=summary_cl.experim
   fs.log_model(
               model=model, # object of your model
               artifact_path="model", #name of the Artifact under MlFlow
-              flavor=mlflow.sklearn, # flavour of the model (our model has a SkLearn Flavour)
+              flavor=mlflow.sklearn, # flavor of the model (our model has a SkLearn Flavour)
               training_set=training_set, # training set you used to train your model with AutoML
               input_example=x_sample, # Dataset example (Pandas dataframe)
               conda_env=env)
@@ -219,6 +218,11 @@ client.transition_model_version_stage(model_name, model_registered.version, stag
 
 # COMMAND ----------
 
+# MAGIC %md
+# MAGIC ## Run Batch Inference
+
+# COMMAND ----------
+
 # Load the ids we want to forecast
 ## For sake of simplicity, we will just predict using the same ids as during training, but this could be a different pipeline
 subject_ids_to_forecast = spark.table(f'{feature_schema}.subject_demographics_features').select("subject_id").limit(100)
@@ -235,9 +239,3 @@ display(scored_df)
 # MAGIC %md 
 # MAGIC
 # MAGIC Notice that while we only selected a list of Subject IDs, the model returns our prediction (is this user likely to be admitted to the emergency room `True`/`False`) and the full list of features automatically retrieved from our feature table.
-
-# COMMAND ----------
-
-# MAGIC %md
-# MAGIC ## 📝 Note
-# MAGIC As you can see in the autogenerated notebook, the accuracy of the model is very low. The primary reason for this is the fact that in the synthetically generated data, the emergency room visits are completely uncorrelated with CHF status or a patients disease history. However, we manually alterred the data to induce correlation between ethnicty, gender and drug exposure history with the outcome. This can be validated by the SHAP values generated in `Cmd 28` of the notebook. This is also reflected in the correlation matrix in [03-autoML-data-exploration]($./03-autoML-data-exploration) notebook. Also, note that most of the selected features have a very high skew (mostly zero).

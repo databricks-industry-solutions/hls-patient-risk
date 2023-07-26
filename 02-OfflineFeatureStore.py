@@ -244,3 +244,7 @@ sql(f'select * from {FEATURE_TABLE_NAME} limit 10').display()
 
 # DBTITLE 1,Select from Feature Store
 sql(f'select * from {FEATURE_TABLE_NAME} limit 10').display()
+
+# COMMAND ----------
+
+

@@ -20,12 +20,12 @@
 # MAGIC
 # MAGIC ### Requirements
 # MAGIC
-# MAGIC * Access to Azure Cosmos DB.
-# MAGIC     - The last notebook uses Cosmos DB as the online store and guides you through how to generate secrets and register them with Databricks Secret Management.  
-# MAGIC * Cluster Requirements
+# MAGIC * Cluster Runtime & Access Mode Requirements
+# MAGIC   - Unity Catalog enabled workspace: Databricks Runtime 13.0 ML or above with the access mode **Assigned** or **No Isolation Shared**. 
+# MAGIC   - Non-Unity Catalog enabled workspace: Databricks Runtime 13.0 ML or above with cluster mode **Standard**.
+# MAGIC * Connection to Azure Cosmos DB for Online Feature Store
 # MAGIC   - The cluster must have the Azure Cosmos DB connector for Spark installed. See the instructions in the section **Prepare the compute cluster**.
-# MAGIC     - Unity Catalog enabled workspace: Databricks Runtime 13.0 ML or above with the access mode **Assigned** or **No Isolation Shared**. 
-# MAGIC     - Non-Unity Catalog enabled workspace: Databricks Runtime 13.0 ML or above with cluster mode **Standard**.
+# MAGIC   - The last notebook uses Cosmos DB as the online store and guides you through how to generate secrets and register them with Databricks Secret Management.  
 
 # COMMAND ----------
 
@@ -37,7 +37,7 @@
 # MAGIC     - Click **Install new**.
 # MAGIC     - Click **Maven** and enter the coordinates of the latest version. For example: `com.azure.cosmos.spark:azure-cosmos-spark_3-2_2-12:4.18.2`
 # MAGIC     - Click **Install**. 
-# MAGIC 1. Attach this notebook to the cluster.
+# MAGIC 1. Attach the notebooks to the cluster.
 
 # COMMAND ----------
 
