@@ -329,7 +329,7 @@ drug_hist_att_id = 2
 # MAGIC     MIN(visit_occurrence.visit_end_date) AS cohort_end_date --first er admission
 # MAGIC   FROM
 # MAGIC     visit_occurrence
-# MAGIC       INNER JOIN omop_patient_risk.cohort 
+# MAGIC       INNER JOIN cohort 
 # MAGIC         ON cohort_definition_id = {target_cohort_id}
 # MAGIC         AND visit_occurrence.person_id = cohort.subject_id
 # MAGIC   WHERE
