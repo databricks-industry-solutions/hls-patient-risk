@@ -84,6 +84,10 @@ print(schema_name)
 # COMMAND ----------
 
 # DBTITLE 1,Define Online Feature Store Spec. Publish First FS Table (drug_features)
+from databricks.feature_store.online_store_spec import AzureCosmosDBSpec
+#Fill in the account_uri of your Azure Cosmos DB account
+account_uri = "https://field-demo.documents.azure.com:443/"
+
 # Specify the online store.
 # Note: These commands use the predefined secret prefix. If you used a different secret scope or prefix, edit these commands before running them.
 #       Make sure you have a database created with same name as specified below.
@@ -122,11 +126,6 @@ fs.publish_table(f'{feature_schema}.condition_history_features', online_store_sp
 # COMMAND ----------
 
 # DBTITLE 1,Publish Third Table (subject_demographics_features)
-from databricks.feature_store.online_store_spec import AzureCosmosDBSpec
-#Fill in the account_uri of your Azure Cosmos DB account
-account_uri = "https://field-demo.documents.azure.com:443/"
-
-# Specify the online store.
 # Note: These commands use the predefined secret prefix. If you used a different secret scope or prefix, edit these commands before running them.
 #       Make sure you have a database created with same name as specified below.
 #       Do not manually create the database or container in Cosmos DB. The publish_table() command creates it for you.
@@ -150,7 +149,7 @@ fs.publish_table(f'{feature_schema}.subject_demographics_features', online_store
 # COMMAND ----------
 
 # DBTITLE 1,Load your model name from 03-AutoML
-model_name = "omop_patientrisk_model"
+model_name = f"{user_name}_omop_patientrisk_model"
 
 # COMMAND ----------
 
@@ -167,7 +166,7 @@ serving_client.create_endpoint_if_not_exists(f"{user_name}_patientrisk_feature_s
 # COMMAND ----------
 
 # Fill in the Databricks access token value.
-# Note: You can generate a new Databricks access token by going to left sidebar "Settings" > "User Settings" > "Access Tokens", or using databricks-cli.
+# Note: You can generate a new Databricks access token by using databricks-cli or clicking your name in the top right > "User Settings" > "Developer" > Access Tokens" > "Generate new token". 
 DATABRICKS_TOKEN = "FillinWithYourToken"
 
 # COMMAND ----------
@@ -179,7 +178,7 @@ def create_tf_serving_json(data):
     return {'inputs': {name: data[name].tolist() for name in data.keys()} if isinstance(data, dict) else data.tolist()}
 
 def score_model(dataset):
-    url = f"https://{workspacename}/serving-endpoints/{user_name}_patientrisk_feature_store_endpoint/invocations
+    url = f"https://{workspacename}/serving-endpoints/{user_name}_patientrisk_feature_store_endpoint/invocations"
     headers = {'Authorization': f'Bearer {DATABRICKS_TOKEN}', 'Content-Type': 'application/json'}
     ds_dict = {'dataframe_split': dataset.to_dict(orient='split')} if isinstance(dataset, pd.DataFrame) else create_tf_serving_json(dataset)
     data_json = json.dumps(ds_dict, allow_nan=True)

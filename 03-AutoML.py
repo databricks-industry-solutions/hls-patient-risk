@@ -159,13 +159,13 @@ training_df.fillna(0).write.mode("overwrite").saveAsTable(f'{feature_schema}.tra
 # COMMAND ----------
 
 # DBTITLE 1,Use automl to build an ML model 
-summary_cl = db_automl.classify(training_df, target_col="outcome", primary_metric="f1", timeout_minutes=5, experiment_dir = "/patientrisk/experiments/feature_store")
+summary_cl = db_automl.classify(training_df, target_col="outcome", primary_metric="f1", timeout_minutes=5, experiment_dir = f"/{user_name}/patientrisk/experiments/feature_store")
 print(f"Best run id: {summary_cl.best_trial.mlflow_run_id}")
 
 # COMMAND ----------
 
 # DBTITLE 1,Name your model
-model_name = "omop_patientrisk_model"
+model_name = f"{user_name}_omop_patientrisk_model"
 
 # COMMAND ----------
 
