@@ -84,25 +84,6 @@ max_n_comorbidities = dbutils.widgets.get('max_n_comorbidities')
 
 # COMMAND ----------
 
-# DBTITLE 1,I don't think this is needed
-# MAGIC %sql
-# MAGIC /*
-# MAGIC CREATE WIDGET text target_condition_concept_id DEFAULT "4229440"; -- CHF
-# MAGIC CREATE WIDGET text outcome_concept_id DEFAULT "9203"; -- Emergency Room Visit
-# MAGIC
-# MAGIC CREATE WIDGET text drug1_concept_id DEFAULT "40163554"; -- Warfarin
-# MAGIC CREATE WIDGET text drug2_concept_id DEFAULT "40221901"; -- Acetaminophen
-# MAGIC
-# MAGIC CREATE WIDGET text min_observation_period DEFAULT "1095"; -- whashout period in days
-# MAGIC CREATE WIDGET text min_time_at_risk DEFAULT "7";
-# MAGIC CREATE WIDGET text max_time_at_risk DEFAULT "365";
-# MAGIC
-# MAGIC CREATE WIDGET text cond_history_years DEFAULT "5";
-# MAGIC CREATE WIDGET text max_n_commorbidities DEFAULT "5";
-# MAGIC */
-
-# COMMAND ----------
-
 # MAGIC %md
 # MAGIC ## Create the OMOP Schema
 # MAGIC First we create our OMOP schema based on the data available from databircks. This dataset is generated using synthea and our [OMOP solution accelerator](https://d1r5llqwmkrl74.cloudfront.net/notebooks/HLS/1-omop-cdm/index.html#1-omop-cdm_1.html).
@@ -357,7 +338,7 @@ drug_hist_att_id = 2
 # MAGIC     MIN(visit_occurrence.visit_end_date) AS cohort_end_date --first er admission
 # MAGIC   FROM
 # MAGIC     visit_occurrence
-# MAGIC       INNER JOIN omop_patient_risk.cohort 
+# MAGIC       INNER JOIN cohort 
 # MAGIC         ON cohort_definition_id = {target_cohort_id}
 # MAGIC         AND visit_occurrence.person_id = cohort.subject_id
 # MAGIC   WHERE

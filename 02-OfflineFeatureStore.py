@@ -1,11 +1,4 @@
 # Databricks notebook source
-# DBTITLE 1,Import Libraries
-#import databricks.automl as db_automl
-#import mlflow
-#import os
-
-# COMMAND ----------
-
 # MAGIC %md
 # MAGIC # Experiment parameters
 # MAGIC First we set up the paramters for the experiment using databricks notebooks widgets utility.
@@ -47,25 +40,6 @@ max_time_at_risk = dbutils.widgets.get('max_time_at_risk')
 
 cond_history_years = dbutils.widgets.get('cond_history_years')
 max_n_comorbidities = dbutils.widgets.get('max_n_comorbidities')
-
-# COMMAND ----------
-
-# DBTITLE 1,I don't think this is needed
-# MAGIC %sql
-# MAGIC /*
-# MAGIC CREATE WIDGET text target_condition_concept_id DEFAULT "4229440"; -- CHF
-# MAGIC CREATE WIDGET text outcome_concept_id DEFAULT "9203"; -- Emergency Room Visit
-# MAGIC
-# MAGIC CREATE WIDGET text drug1_concept_id DEFAULT "40163554"; -- Warfarin
-# MAGIC CREATE WIDGET text drug2_concept_id DEFAULT "40221901"; -- Acetaminophen
-# MAGIC
-# MAGIC CREATE WIDGET text min_observation_period DEFAULT "1095"; -- whashout period in days
-# MAGIC CREATE WIDGET text min_time_at_risk DEFAULT "7";
-# MAGIC CREATE WIDGET text max_time_at_risk DEFAULT "365";
-# MAGIC
-# MAGIC CREATE WIDGET text cond_history_years DEFAULT "5";
-# MAGIC CREATE WIDGET text max_n_commorbidities DEFAULT "5";
-# MAGIC */
 
 # COMMAND ----------
 
@@ -244,7 +218,3 @@ sql(f'select * from {FEATURE_TABLE_NAME} limit 10').display()
 
 # DBTITLE 1,Select from Feature Store
 sql(f'select * from {FEATURE_TABLE_NAME} limit 10').display()
-
-# COMMAND ----------
-
-
