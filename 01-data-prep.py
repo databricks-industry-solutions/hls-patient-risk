@@ -15,7 +15,7 @@ dbutils.widgets.removeAll()
 # MAGIC  3. Drug exposure history features
 # MAGIC  4. Commorbidity history features
 # MAGIC  5. Demographics features
-# MAGIC 
+# MAGIC
 # MAGIC  and create a training dataset that will be used for risk prediction.
 
 # COMMAND ----------
@@ -63,14 +63,14 @@ max_n_commorbidities = dbutils.widgets.get('max_n_commorbidities')
 # MAGIC %sql
 # MAGIC CREATE WIDGET text target_condition_concept_id DEFAULT "4229440"; -- CHF
 # MAGIC CREATE WIDGET text outcome_concept_id DEFAULT "9203"; -- Emergency Room Visit
-# MAGIC 
+# MAGIC
 # MAGIC CREATE WIDGET text drug1_concept_id DEFAULT "40163554"; -- Warfarin
 # MAGIC CREATE WIDGET text drug2_concept_id DEFAULT "40221901"; -- Acetaminophen
-# MAGIC 
+# MAGIC
 # MAGIC CREATE WIDGET text min_observation_period DEFAULT "1095"; -- whashout period in days
 # MAGIC CREATE WIDGET text min_time_at_risk DEFAULT "7";
 # MAGIC CREATE WIDGET text max_time_at_risk DEFAULT "365";
-# MAGIC 
+# MAGIC
 # MAGIC CREATE WIDGET text cond_history_years DEFAULT "5";
 # MAGIC CREATE WIDGET text max_n_commorbidities DEFAULT "5";
 
@@ -202,14 +202,14 @@ drug_hist_att_id = 2
 
 # MAGIC %md
 # MAGIC ### Target Cohort
-# MAGIC 
+# MAGIC
 # MAGIC First we define the [target cohort](https://ohdsi.github.io/TheBookOfOhdsi/Cohorts.html), which is determind based on the following criteria:
-# MAGIC 
+# MAGIC
 # MAGIC Patients who are newly:
 # MAGIC - diagnosed with chronic congestive heart failure (CCHF)
 # MAGIC - persons with a condition occurrence record of CCHF or any descendants, indexed at the first diagnosis (cohort entry date)
 # MAGIC - who have at least three years (1095 days) of prior observation before their first diagnosis
-# MAGIC 
+# MAGIC
 # MAGIC For the target condition, we choose only to allow patients enter once at the earliest time they have been diagnosed. In the following query we also include ancestor concepts.
 
 # COMMAND ----------
@@ -260,7 +260,7 @@ drug_hist_att_id = 2
 # MAGIC     )
 # MAGIC     AND date_add(earliest_condition_onset.condition_start_date, {max_time_at_risk} ) < observation_period.observation_period_end_date
 # MAGIC """
-# MAGIC 
+# MAGIC
 # MAGIC cnt = sql(f'select count(*) as cnt from cohort').collect()[0]['cnt']
 # MAGIC if cnt==0:
 # MAGIC   sql(f'INSERT INTO cohort {target_cohort_query}')
@@ -294,10 +294,10 @@ drug_hist_att_id = 2
 # MAGIC persons with a condition occurrence record of {target_cohort_concept_name} or any descendants, indexed at the first diagnosis
 # MAGIC who have >{min_observation_period} days of prior observation before their first diagnosis
 # MAGIC """
-# MAGIC 
+# MAGIC
 # MAGIC insert_query = f"select {target_cohort_id}, '{target_cohort_concept_name} Cohort', '{target_cohort_description}', 1, '{target_cohort_query}', current_date()"
 # MAGIC cnt = sql(f'select count(*) as cnt from cohort_definition').collect()[0]['cnt']
-# MAGIC 
+# MAGIC
 # MAGIC if cnt==0:
 # MAGIC   sql(f"INSERT INTO cohort_definition {insert_query}")
 # MAGIC else:
@@ -318,8 +318,8 @@ drug_hist_att_id = 2
 
 # MAGIC %py
 # MAGIC sql(f'SET outcome_cohort_id = {outcome_cohort_id}')
-# MAGIC 
-# MAGIC 
+# MAGIC
+# MAGIC
 # MAGIC outcome_cohort_query =  f"""
 # MAGIC   SELECT
 # MAGIC     {outcome_cohort_id} AS cohort_definition_id,
@@ -328,7 +328,7 @@ drug_hist_att_id = 2
 # MAGIC     MIN(visit_occurrence.visit_end_date) AS cohort_end_date --first er admission
 # MAGIC   FROM
 # MAGIC     visit_occurrence
-# MAGIC       INNER JOIN omop_patient_risk.cohort 
+# MAGIC       INNER JOIN cohort 
 # MAGIC         ON cohort_definition_id = {target_cohort_id}
 # MAGIC         AND visit_occurrence.person_id = cohort.subject_id
 # MAGIC   WHERE
@@ -340,9 +340,9 @@ drug_hist_att_id = 2
 # MAGIC     visit_occurrence.person_id,
 # MAGIC     cohort.cohort_end_date
 # MAGIC """
-# MAGIC 
+# MAGIC
 # MAGIC cnt = sql(f'select count(*) as cnt from cohort where cohort_definition_id = {outcome_cohort_id}').collect()[0]['cnt']
-# MAGIC 
+# MAGIC
 # MAGIC if cnt==0:
 # MAGIC   sql(f'INSERT INTO cohort {outcome_cohort_query}')
 # MAGIC else:
@@ -439,7 +439,7 @@ where cohort_definition_id = {outcome_cohort_id}""").display()
 # MAGIC   AND vo.VISIT_CONCEPT_ID = {outcome_concept_id}
 # MAGIC   AND is_valid_time_overlap(tc.cohort_start_date, tc.cohort_start_date, vo.visit_start_date, vo.visit_start_date, {min_time_at_risk}, {max_time_at_risk})
 # MAGIC """
-# MAGIC 
+# MAGIC
 # MAGIC cnt = sql(f'select count(*) as cnt from COHORT_ATTRIBUTE where cohort_definition_id = {target_cohort_id}').collect()[0]['cnt']
 # MAGIC if cnt==0:
 # MAGIC   sql(f"INSERT INTO COHORT_ATTRIBUTE {insert_query}")
@@ -547,7 +547,7 @@ sql(f'select * from COHORT_ATTRIBUTE where ATTRIBUTE_DEFINITION_ID={condition_hi
 # MAGIC   tc.cohort_end_date,
 # MAGIC   de.DRUG_CONCEPT_ID
 # MAGIC   """
-# MAGIC 
+# MAGIC
 # MAGIC cnt = sql(f'select count(*) as cnt from COHORT_ATTRIBUTE where ATTRIBUTE_DEFINITION_ID = {drug_hist_att_id}').collect()[0]['cnt']
 # MAGIC if cnt==0:
 # MAGIC   sql(f"INSERT INTO COHORT_ATTRIBUTE {insert_query}")
@@ -716,7 +716,7 @@ sql(f'select * from {FEATURE_TABLE_NAME} limit 10').display()
 # MAGIC     schema=subject_demographics_features_df.schema,
 # MAGIC     description=description
 # MAGIC )
-# MAGIC 
+# MAGIC
 # MAGIC sql(f'select * from {FEATURE_TABLE_NAME} limit 10').display()
 
 # COMMAND ----------
@@ -790,11 +790,11 @@ training_df.fillna(0).write.saveAsTable(f'{feature_schema}.training_data')
 # COMMAND ----------
 
 # MAGIC %md
-# MAGIC ## Model Tarining
+# MAGIC ## Model Training
 # MAGIC Now that we have the training data ready, we will proceed to use databricks [AutoML]() to train a binary classifier that predicts the outcome (emergency room visit status) based on the selected features that we have stored in the feature store.
 # MAGIC The next notebook ([02-automl-best-model]($./02-automl-best-model)) is an example notebook generated by AutoML based on the dataset prepard in this step.
-# MAGIC 
-# MAGIC 
+# MAGIC
+# MAGIC
 # MAGIC <img src='https://hls-eng-data-public.s3.amazonaws.com/img/patient_risk_automl.gif'>
 
 # COMMAND ----------
